@@ -248,6 +248,14 @@ export default function OpportunitiesPage() {
     return Array.from(exchanges).sort();
   }, [opportunities]);
 
+  // Bot action status priority for sorting (lower = better/more actionable)
+  const botActionPriority: Record<string, number> = {
+    auto_trade: 1,
+    manual_only: 2,
+    waiting: 3,
+    blocked: 4,
+  };
+
   // Sort functions for opportunities
   const sortFunctions: Record<OpportunitySortKey, (a: Opportunity, b: Opportunity) => number> = useMemo(() => ({
     symbol: (a, b) => a.symbol.localeCompare(b.symbol),
@@ -258,6 +266,11 @@ export default function OpportunitiesPage() {
     long_exchange: (a, b) => (a.long_leg?.exchange || a.primary_exchange || '').localeCompare(b.long_leg?.exchange || b.primary_exchange || ''),
     short_exchange: (a, b) => (a.short_leg?.exchange || a.hedge_exchange || '').localeCompare(b.short_leg?.exchange || b.hedge_exchange || ''),
     status: (a, b) => a.status.localeCompare(b.status),
+    bot_action: (a, b) => {
+      const aPriority = botActionPriority[a.bot_action?.status || 'blocked'] || 5;
+      const bPriority = botActionPriority[b.bot_action?.status || 'blocked'] || 5;
+      return aPriority - bPriority;
+    },
   }), []);
 
   // Filter opportunities
