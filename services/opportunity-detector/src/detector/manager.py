@@ -171,6 +171,7 @@ class OpportunityDetector:
             asyncio.create_task(self._listen_blacklist_updates()),
             asyncio.create_task(self._run_redis_listener()),
             asyncio.create_task(self._publish_status_updates()),
+            asyncio.create_task(self._refresh_allocation_context_loop()),
         ]
 
         logger.info(
