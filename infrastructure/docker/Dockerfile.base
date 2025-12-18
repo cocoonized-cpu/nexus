@@ -1,0 +1,51 @@
+# Base Dockerfile for NEXUS Python services
+FROM python:3.11-slim as base
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy shared libraries
+COPY shared/ /app/shared/
+
+# Development stage
+FROM base as development
+
+# Install development dependencies
+RUN pip install --no-cache-dir \
+    pytest \
+    pytest-asyncio \
+    pytest-cov \
+    black \
+    isort \
+    flake8 \
+    mypy
+
+# Production stage
+FROM base as production
+
+# Create non-root user
+RUN addgroup --system --gid 1001 nexus && \
+    adduser --system --uid 1001 --gid 1001 nexus
+
+USER nexus
+
+# Default command (override in service Dockerfiles)
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

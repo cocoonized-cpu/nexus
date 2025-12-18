@@ -1,0 +1,308 @@
+services:
+  # =============================================================================
+  # Infrastructure Services
+  # =============================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus
+      POSTGRES_DB: nexus
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      - "127.0.0.1:5432:5432"  # Bind to localhost only for security
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    command: >
+      bash -c "
+        if [ -f /var/lib/postgresql/data/pg_hba.conf ]; then
+          echo 'Securing pg_hba.conf...'
+          echo '# Secured for NEXUS' > /var/lib/postgresql/data/pg_hba.conf
+          echo 'local all nexus trust' >> /var/lib/postgresql/data/pg_hba.conf
+          echo 'host all nexus 127.0.0.1/32 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf
+          echo 'host all nexus 172.16.0.0/12 scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf
+          echo 'host all all 0.0.0.0/0 reject' >> /var/lib/postgresql/data/pg_hba.conf
+        fi
+        exec docker-entrypoint.sh postgres -c log_connections=off -c log_disconnections=off -c log_min_messages=PANIC
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexus-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    ports:
+      - "127.0.0.1:6379:6379"  # Bind to localhost only for security
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nexus-network
+
+  # =============================================================================
+  # Backend Microservices
+  # =============================================================================
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: nexus-gateway
+    environment:
+      - SERVICE_NAME=gateway
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - API_PORT=8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/gateway:/app/services/gateway
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  data-collector:
+    build:
+      context: .
+      dockerfile: services/data-collector/Dockerfile
+    container_name: nexus-data-collector
+    environment:
+      - SERVICE_NAME=data-collector
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/data-collector:/app/services/data-collector
+    networks:
+      - nexus-network
+
+  funding-aggregator:
+    build:
+      context: .
+      dockerfile: services/funding-aggregator/Dockerfile
+    container_name: nexus-funding-aggregator
+    environment:
+      - SERVICE_NAME=funding-aggregator
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      data-collector:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared
+      - ./services/funding-aggregator:/app/services/funding-aggregator
+    networks:
+      - nexus-network
+
+  opportunity-detector:
+    build:
+      context: .
+      dockerfile: services/opportunity-detector/Dockerfile
+    container_name: nexus-opportunity-detector
+    environment:
+      - SERVICE_NAME=opportunity-detector
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      funding-aggregator:
+        condition: service_started
+    volumes:
+      - ./shared:/app/shared
+      - ./services/opportunity-detector:/app/services/opportunity-detector
+    networks:
+      - nexus-network
+
+  execution-engine:
+    build:
+      context: .
+      dockerfile: services/execution-engine/Dockerfile
+    container_name: nexus-execution-engine
+    environment:
+      - SERVICE_NAME=execution-engine
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/execution-engine:/app/services/execution-engine
+    networks:
+      - nexus-network
+
+  position-manager:
+    build:
+      context: .
+      dockerfile: services/position-manager/Dockerfile
+    container_name: nexus-position-manager
+    environment:
+      - SERVICE_NAME=position-manager
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/position-manager:/app/services/position-manager
+    networks:
+      - nexus-network
+
+  risk-manager:
+    build:
+      context: .
+      dockerfile: services/risk-manager/Dockerfile
+    container_name: nexus-risk-manager
+    environment:
+      - SERVICE_NAME=risk-manager
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/risk-manager:/app/services/risk-manager
+    networks:
+      - nexus-network
+
+  capital-allocator:
+    build:
+      context: .
+      dockerfile: services/capital-allocator/Dockerfile
+    container_name: nexus-capital-allocator
+    environment:
+      - SERVICE_NAME=capital-allocator
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/capital-allocator:/app/services/capital-allocator
+    networks:
+      - nexus-network
+
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    container_name: nexus-analytics
+    environment:
+      - SERVICE_NAME=analytics
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/analytics:/app/services/analytics
+    networks:
+      - nexus-network
+
+  notification:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    container_name: nexus-notification
+    environment:
+      - SERVICE_NAME=notification
+      - DATABASE_URL=postgresql+asyncpg://nexus:nexus@postgres:5432/nexus
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./shared:/app/shared
+      - ./services/notification:/app/services/notification
+    networks:
+      - nexus-network
+
+  # =============================================================================
+  # Frontend
+  # =============================================================================
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexus-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+    networks:
+      - nexus-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  nexus-network:
+    driver: bridge

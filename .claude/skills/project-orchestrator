@@ -1,0 +1,204 @@
+---
+name: project-orchestrator
+description: Coordinates multi-agent development workflow for the NEXUS funding rate arbitrage system. Use when initiating development tasks, coordinating between specialized agents, managing sprint planning, or orchestrating cross-functional work across product, engineering, QA, and DevOps teams.
+---
+
+# NEXUS Project Orchestrator
+
+## Purpose
+
+Orchestrates the development of NEXUS (Neural EXchange Unified Strategy), a sophisticated funding rate arbitrage system. Coordinates specialized agents to deliver a production-grade, real-time, highly scalable trading platform.
+
+## Project Context
+
+NEXUS is a funding rate arbitrage bot requiring:
+
+- Dockerized microservice architecture
+- Real-time data processing (sub-second latency)
+- PostgreSQL with all configurations stored in database
+- Modern UI using shadcn/ui components
+- Horizontal scalability
+- Dual-source funding rate collection (Exchange APIs + ArbitrageScanner)
+
+For complete system specifications, reference:
+- `NEXUS_Whitepaper.md` - Conceptual design and strategy
+- `NEXUS_Implementation_Spec.md` - Technical implementation details
+
+## Agent Coordination Model
+
+### Available Specialized Agents
+
+| Agent | Responsibility | Invoke When |
+|-------|---------------|-------------|
+| `product-management` | Requirements, user stories, acceptance criteria | Defining features, prioritization |
+| `backend-engineering` | Microservices, APIs, business logic | Building services, integrations |
+| `frontend-engineering` | UI/UX, React components, real-time displays | Dashboard, monitoring interfaces |
+| `database-engineering` | Schema design, migrations, optimization | Data modeling, performance |
+| `qa-engineering` | Test strategy, test cases, quality gates | Defining test coverage |
+| `e2e-testing` | Playwright automation, user acceptance | Automated testing |
+| `devops-infrastructure` | Docker, CI/CD, deployment, monitoring | Infrastructure setup |
+
+### Orchestration Principles
+
+1. **Sequential Dependencies**: Ensure agents complete prerequisite work before downstream tasks begin
+2. **Parallel Execution**: Identify independent workstreams that can proceed concurrently
+3. **Integration Points**: Define clear contracts between services before implementation
+4. **Quality Gates**: Require QA sign-off before merging features
+
+## Workflow Phases
+
+### Phase 1: Foundation
+
+1. Invoke `product-management` to define MVP scope and user stories
+2. Invoke `database-engineering` to design core schema
+3. Invoke `devops-infrastructure` to set up Docker environment
+4. Invoke `backend-engineering` to scaffold microservice structure
+
+### Phase 2: Core Services
+
+1. Invoke `backend-engineering` for each microservice:
+   - Data Collector Service
+   - Funding Rate Aggregator Service
+   - Opportunity Detection Service
+   - Execution Engine Service
+   - Position Manager Service
+   - Risk Manager Service
+
+2. Invoke `database-engineering` for migrations as schemas evolve
+3. Invoke `qa-engineering` to define integration test strategy
+
+### Phase 3: User Interface
+
+1. Invoke `frontend-engineering` for dashboard components
+2. Invoke `backend-engineering` for WebSocket real-time feeds
+3. Invoke `e2e-testing` for UI automation framework setup
+
+### Phase 4: Quality Assurance
+
+1. Invoke `qa-engineering` for comprehensive test execution
+2. Invoke `e2e-testing` for full user journey automation
+3. Invoke `devops-infrastructure` for staging environment
+
+### Phase 5: Production Readiness
+
+1. Invoke `devops-infrastructure` for production infrastructure
+2. Invoke all agents for documentation finalization
+3. Conduct load testing and security review
+
+## Task Delegation Template
+
+When delegating to a specialized agent, provide:
+
+```
+## Task Assignment
+
+**Agent**: [agent-name]
+**Priority**: [P0/P1/P2/P3]
+**Sprint**: [sprint-number]
+
+### Objective
+[Clear, measurable goal]
+
+### Context
+[Relevant background and dependencies]
+
+### Acceptance Criteria
+[Specific, testable requirements]
+
+### Dependencies
+[Upstream: work this depends on]
+[Downstream: work that depends on this]
+
+### Deliverables
+[Concrete outputs expected]
+```
+
+## Integration Contracts
+
+Before implementation begins, ensure these contracts are defined:
+
+### Service-to-Service
+
+- API schemas (OpenAPI/Swagger)
+- Message formats (for event bus)
+- Error handling conventions
+- Authentication/authorization patterns
+
+### Database Contracts
+
+- Table ownership per service
+- Shared vs. isolated schemas
+- Migration coordination
+
+### Frontend-Backend Contracts
+
+- REST endpoint specifications
+- WebSocket event schemas
+- Authentication flow
+
+## Quality Gates
+
+### Code Review Requirements
+
+- All PRs require review from domain-appropriate agent
+- Cross-cutting concerns require multi-agent review
+- Security-sensitive changes require additional scrutiny
+
+### Testing Requirements
+
+- Unit test coverage minimum: 80%
+- Integration tests for all service boundaries
+- E2E tests for critical user journeys
+- Performance benchmarks for real-time paths
+
+### Documentation Requirements
+
+- API documentation auto-generated
+- Architecture decision records for significant choices
+- Runbook for operational procedures
+
+## Escalation Patterns
+
+### Technical Blockers
+
+1. Identify blocking issue and impacted agents
+2. Convene relevant agents to resolve
+3. Document decision and rationale
+4. Update affected workstreams
+
+### Scope Changes
+
+1. Route to `product-management` for impact analysis
+2. Assess effort with relevant engineering agents
+3. Update sprint plan if approved
+4. Communicate to all affected agents
+
+## Progress Tracking
+
+Maintain visibility into:
+
+- Sprint burndown across all agents
+- Dependency resolution status
+- Integration test pass rates
+- Technical debt inventory
+
+## Communication Protocols
+
+### Daily Sync Topics
+
+- Blockers requiring cross-agent coordination
+- Completed integration points
+- Upcoming dependencies
+
+### Sprint Boundary Activities
+
+- Demo completed features
+- Retrospective on coordination effectiveness
+- Plan next sprint's agent assignments
+
+## References
+
+For detailed specifications, instruct agents to read:
+- `resources/architecture-overview.md` - System architecture
+- `resources/service-contracts.md` - API contracts
+- `resources/data-flow.md` - Data pipeline design
