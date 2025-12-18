@@ -1,12 +1,8 @@
 'use client';
 
+import * as React from 'react';
 import * as TooltipPrimitive from '@radix-ui/react-tooltip';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, XCircle, Clock, Ban, Info } from 'lucide-react';
 
@@ -81,8 +77,8 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
   const passedRules = botAction.details.filter(d => d.passed);
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    <TooltipPrimitive.Root delayDuration={0}>
+      <TooltipPrimitive.Trigger asChild>
         <Badge
           variant="outline"
           className={cn(
@@ -94,12 +90,16 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
           <Icon className="h-3 w-3 mr-1" />
           {config.label}
         </Badge>
-      </TooltipTrigger>
+      </TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
-        <TooltipContent
+        <TooltipPrimitive.Content
           side="left"
-          className="z-[100] max-w-md p-0 bg-popover border border-border shadow-xl"
           sideOffset={8}
+          className={cn(
+            'z-[9999] max-w-md p-0 rounded-lg border bg-popover text-popover-foreground shadow-xl',
+            'animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+            'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2'
+          )}
         >
           <div className="p-4 space-y-3">
             {/* Header */}
@@ -174,8 +174,9 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
               </div>
             )}
           </div>
-        </TooltipContent>
+          <TooltipPrimitive.Arrow className="fill-popover" />
+        </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
-    </Tooltip>
+    </TooltipPrimitive.Root>
   );
 }
