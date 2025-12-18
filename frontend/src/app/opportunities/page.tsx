@@ -38,6 +38,7 @@ import { useWebSocket } from '@/lib/websocket';
 import { useToast } from '@/components/ui/use-toast';
 import { CountdownCell } from '@/components/opportunities/countdown-cell';
 import { ExecutionProgressModal } from '@/components/opportunities/execution-progress-modal';
+import { BotActionCell, BotAction } from '@/components/opportunities/bot-action-cell';
 import {
   SortableTableHeader,
   useSortState,
