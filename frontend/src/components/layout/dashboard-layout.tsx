@@ -89,8 +89,11 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
       <div className="hidden w-64 flex-shrink-0 border-r bg-card md:block">
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center border-b px-6">
-            <span className="text-xl font-bold">NEXUS</span>
+          <div className="flex h-20 items-center border-b px-6">
+            <div className="flex flex-col">
+              <span className="text-2xl font-bold">NEXUS</span>
+              <span className="text-xs text-muted-foreground">Funding Rate Arbitrage</span>
+            </div>
           </div>
 
           {/* Navigation */}
@@ -106,7 +109,10 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         {/* Header */}
         <header className="flex h-16 items-center justify-between border-b px-6">
           <div className="flex items-center gap-4 md:hidden">
-            <span className="text-xl font-bold">NEXUS</span>
+            <div className="flex flex-col">
+              <span className="text-2xl font-bold">NEXUS</span>
+              <span className="text-xs text-muted-foreground">Funding Rate Arbitrage</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-4 ml-auto">
