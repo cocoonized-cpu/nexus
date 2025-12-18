@@ -43,7 +43,11 @@ services:
       - "127.0.0.1:6379:6379"  # Bind to localhost only for security
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: >
+      redis-server
+      --appendonly yes
+      --client-output-buffer-limit pubsub 64mb 32mb 60
+      --tcp-keepalive 60
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
