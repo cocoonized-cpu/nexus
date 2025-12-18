@@ -1,6 +1,6 @@
 """
 Docker Log Streaming API endpoints.
-Provides real-time log streaming from Docker containers via SSE.
+Provides real-time log streaming from Docker containers via SSE using Docker SDK.
 """
 
 import asyncio
@@ -8,11 +8,20 @@ import json
 from datetime import datetime
 from typing import Any, AsyncGenerator, Optional
 
+import docker
+from docker.errors import NotFound, APIError
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+# Initialize Docker client
+try:
+    docker_client = docker.from_env()
+except Exception as e:
+    docker_client = None
+    print(f"Warning: Could not initialize Docker client: {e}")
 
 # Service name to Docker container name mapping
 SERVICE_CONTAINERS = {
@@ -33,22 +42,11 @@ SERVICE_CONTAINERS = {
 
 # Severity keywords for log classification
 SEVERITY_KEYWORDS = {
-    "error": ["error", "exception", "failed", "failure", "critical", "fatal"],
+    "error": ["error", "exception", "failed", "failure", "critical", "fatal", "traceback"],
     "warning": ["warning", "warn", "attention", "caution"],
-    "info": ["info", "started", "connected", "completed", "success"],
+    "info": ["info", "started", "connected", "completed", "success", "running"],
     "debug": ["debug", "trace", "verbose"],
 }
-
-
-class LogEntry(BaseModel):
-    """Model for a log entry."""
-
-    timestamp: datetime
-    service: str
-    level: str
-    message: str
-    container: str
-    raw: str
 
 
 class LogHistoryResponse(BaseModel):
@@ -92,20 +90,17 @@ def parse_log_line(line: str, service: str, container: str) -> Optional[dict[str
         pass
 
     # Parse as plain text
-    # Common formats: "2025-01-01 12:00:00 INFO message" or just "message"
-    parts = line.split(" ", 3)
     timestamp = datetime.utcnow().isoformat()
     level = classify_log_level(line)
     message = line
 
     # Try to extract timestamp and level from common patterns
+    parts = line.split(" ", 3)
     if len(parts) >= 3:
-        # Check if first two parts look like datetime
         try:
             potential_ts = f"{parts[0]} {parts[1]}"
             datetime.fromisoformat(potential_ts.replace("Z", "+00:00"))
             timestamp = potential_ts
-            # Third part might be level
             if parts[2].upper() in ["INFO", "DEBUG", "WARNING", "ERROR", "CRITICAL"]:
                 level = parts[2].lower()
                 message = parts[3] if len(parts) > 3 else ""
@@ -125,87 +120,123 @@ def parse_log_line(line: str, service: str, container: str) -> Optional[dict[str
 
 
 async def get_docker_logs(
-    container: str,
+    container_name: str,
     tail: int = 100,
     since: Optional[str] = None,
 ) -> list[str]:
-    """Get logs from a Docker container."""
-    import subprocess
-
-    cmd = ["docker", "logs", container, f"--tail={tail}"]
-    if since:
-        cmd.extend(["--since", since])
+    """Get logs from a Docker container using Docker SDK."""
+    if not docker_client:
+        return []
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=10,
+        container = docker_client.containers.get(container_name)
+
+        # Parse since parameter
+        since_param = None
+        if since:
+            # Handle formats like "10m", "1h", "30s"
+            import re
+            match = re.match(r"(\d+)([smh])", since)
+            if match:
+                value, unit = int(match.group(1)), match.group(2)
+                from datetime import timedelta
+                if unit == "s":
+                    delta = timedelta(seconds=value)
+                elif unit == "m":
+                    delta = timedelta(minutes=value)
+                elif unit == "h":
+                    delta = timedelta(hours=value)
+                since_param = (datetime.utcnow() - delta).isoformat()
+
+        # Get logs
+        logs = container.logs(
+            tail=tail,
+            since=since_param,
+            timestamps=False,
+            stream=False,
         )
-        # Docker logs go to stderr for some reason
-        output = result.stdout + result.stderr
-        return output.strip().split("\n") if output.strip() else []
-    except subprocess.TimeoutExpired:
+
+        # Decode and split
+        if isinstance(logs, bytes):
+            logs = logs.decode("utf-8", errors="replace")
+
+        return logs.strip().split("\n") if logs.strip() else []
+
+    except NotFound:
         return []
-    except FileNotFoundError:
-        # Docker not available
+    except APIError as e:
+        print(f"Docker API error for {container_name}: {e}")
         return []
-    except Exception:
+    except Exception as e:
+        print(f"Error getting logs for {container_name}: {e}")
         return []
 
 
-async def stream_docker_logs(
+async def stream_docker_logs_generator(
     containers: list[str],
     services: list[str],
 ) -> AsyncGenerator[str, None]:
-    """Stream logs from multiple Docker containers via SSE."""
-    import subprocess
+    """Stream logs from multiple Docker containers via SSE using Docker SDK."""
+    if not docker_client:
+        yield f"data: {json.dumps({'error': 'Docker client not available'})}\n\n"
+        return
 
-    processes: list[tuple[str, str, subprocess.Popen]] = []
+    # Get container objects and start streaming
+    streams = []
+    for container_name, service in zip(containers, services):
+        try:
+            container = docker_client.containers.get(container_name)
+            # Get a streaming generator for logs
+            log_stream = container.logs(
+                stream=True,
+                follow=True,
+                tail=0,
+                timestamps=False,
+            )
+            streams.append((container_name, service, log_stream))
+        except NotFound:
+            continue
+        except Exception as e:
+            print(f"Error setting up stream for {container_name}: {e}")
+            continue
+
+    if not streams:
+        yield f"data: {json.dumps({'error': 'No containers available for streaming'})}\n\n"
+        return
 
     try:
-        # Start a tail -f process for each container
-        for container, service in zip(containers, services):
-            try:
-                proc = subprocess.Popen(
-                    ["docker", "logs", container, "-f", "--tail=0"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    bufsize=1,
-                )
-                processes.append((container, service, proc))
-            except Exception:
-                continue
-
-        if not processes:
-            yield f"data: {json.dumps({'error': 'No containers available'})}\n\n"
-            return
-
-        # Stream logs from all processes
+        # Stream from all containers
         while True:
-            for container, service, proc in processes:
-                if proc.stdout:
-                    # Non-blocking read
-                    import select
-
-                    ready, _, _ = select.select([proc.stdout], [], [], 0.1)
-                    if ready:
-                        line = proc.stdout.readline()
+            for container_name, service, log_stream in streams:
+                try:
+                    # Non-blocking check - use iterator with timeout
+                    for line in log_stream:
+                        if isinstance(line, bytes):
+                            line = line.decode("utf-8", errors="replace")
+                        line = line.strip()
                         if line:
-                            log_entry = parse_log_line(line, service, container)
+                            log_entry = parse_log_line(line, service, container_name)
                             if log_entry:
                                 yield f"data: {json.dumps(log_entry)}\n\n"
+                        break  # Process one line per iteration
+                except StopIteration:
+                    continue
+                except Exception:
+                    continue
 
-            # Small sleep to prevent CPU spinning
             await asyncio.sleep(0.1)
-
+    except asyncio.CancelledError:
+        pass
     finally:
-        # Clean up processes
-        for _, _, proc in processes:
-            proc.terminate()
-            proc.wait()
+        # Clean up streams
+        for _, _, stream in streams:
+            try:
+                stream.close()
+            except Exception:
+                pass
+
+
+# IMPORTANT: Specific routes MUST come before the catch-all /{service} route
 
 
 @router.get("/services")
@@ -213,26 +244,43 @@ async def list_available_services() -> dict[str, Any]:
     """
     List all available services for log streaming.
     """
-    # Check which containers are actually running
-    import subprocess
+    if not docker_client:
+        return {
+            "success": False,
+            "error": "Docker client not available",
+            "data": {"available": [], "unavailable": []},
+        }
 
     available = []
     unavailable = []
 
-    for service, container in SERVICE_CONTAINERS.items():
+    for service, container_name in SERVICE_CONTAINERS.items():
         try:
-            result = subprocess.run(
-                ["docker", "inspect", "-f", "{{.State.Running}}", container],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and "true" in result.stdout.lower():
-                available.append({"service": service, "container": container, "status": "running"})
+            container = docker_client.containers.get(container_name)
+            if container.status == "running":
+                available.append({
+                    "service": service,
+                    "container": container_name,
+                    "status": "running",
+                })
             else:
-                unavailable.append({"service": service, "container": container, "status": "stopped"})
-        except Exception:
-            unavailable.append({"service": service, "container": container, "status": "unknown"})
+                unavailable.append({
+                    "service": service,
+                    "container": container_name,
+                    "status": container.status,
+                })
+        except NotFound:
+            unavailable.append({
+                "service": service,
+                "container": container_name,
+                "status": "not_found",
+            })
+        except Exception as e:
+            unavailable.append({
+                "service": service,
+                "container": container_name,
+                "status": f"error: {str(e)}",
+            })
 
     return {
         "success": True,
@@ -248,47 +296,6 @@ async def list_available_services() -> dict[str, Any]:
     }
 
 
-@router.get("/{service}")
-async def get_service_logs(
-    service: str,
-    tail: int = Query(100, le=1000, description="Number of lines to return"),
-    since: Optional[str] = Query(None, description="Show logs since timestamp (e.g., '10m', '1h')"),
-    level: Optional[str] = Query(None, description="Filter by log level"),
-) -> LogHistoryResponse:
-    """
-    Get recent logs from a specific service.
-    """
-    if service not in SERVICE_CONTAINERS:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Service '{service}' not found. Available: {list(SERVICE_CONTAINERS.keys())}",
-        )
-
-    container = SERVICE_CONTAINERS[service]
-    lines = await get_docker_logs(container, tail, since)
-
-    logs = []
-    for line in lines:
-        log_entry = parse_log_line(line, service, container)
-        if log_entry:
-            # Apply level filter
-            if level and log_entry["level"] != level.lower():
-                continue
-            logs.append(log_entry)
-
-    return LogHistoryResponse(
-        data=logs,
-        meta={
-            "service": service,
-            "container": container,
-            "count": len(logs),
-            "tail": tail,
-            "level_filter": level,
-            "timestamp": datetime.utcnow().isoformat(),
-        },
-    )
-
-
 @router.get("/stream")
 async def stream_logs(
     request: Request,
@@ -300,19 +307,7 @@ async def stream_logs(
 ):
     """
     Stream logs from services via Server-Sent Events (SSE).
-
-    Connect to this endpoint with an EventSource to receive real-time logs.
-
-    Example:
-    ```javascript
-    const eventSource = new EventSource('/api/v1/system/logs/stream?services=gateway,position-manager');
-    eventSource.onmessage = (event) => {
-        const log = JSON.parse(event.data);
-        console.log(log);
-    };
-    ```
     """
-    # Parse requested services
     if services:
         requested = [s.strip() for s in services.split(",")]
         invalid = [s for s in requested if s not in SERVICE_CONTAINERS]
@@ -328,8 +323,7 @@ async def stream_logs(
         service_names = list(SERVICE_CONTAINERS.keys())
 
     async def generate():
-        async for log_data in stream_docker_logs(containers, service_names):
-            # Apply level filter if specified
+        async for log_data in stream_docker_logs_generator(containers, service_names):
             if level:
                 try:
                     log_entry = json.loads(log_data.replace("data: ", "").strip())
@@ -360,7 +354,13 @@ async def get_aggregate_logs(
     """
     Get aggregated logs from multiple services, sorted by timestamp.
     """
-    # Parse requested services
+    if not docker_client:
+        return LogHistoryResponse(
+            success=False,
+            data=[],
+            meta={"error": "Docker client not available"},
+        )
+
     if services:
         requested = [s.strip() for s in services.split(",")]
         invalid = [s for s in requested if s not in SERVICE_CONTAINERS]
@@ -378,6 +378,7 @@ async def get_aggregate_logs(
             "position-manager",
             "execution-engine",
             "funding-aggregator",
+            "data-collector",
         ]
 
     all_logs = []
@@ -403,6 +404,47 @@ async def get_aggregate_logs(
         meta={
             "services": service_list,
             "count": len(all_logs),
+            "level_filter": level,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
+# This catch-all route MUST be last
+@router.get("/{service}")
+async def get_service_logs(
+    service: str,
+    tail: int = Query(100, le=1000, description="Number of lines to return"),
+    since: Optional[str] = Query(None, description="Show logs since timestamp (e.g., '10m', '1h')"),
+    level: Optional[str] = Query(None, description="Filter by log level"),
+) -> LogHistoryResponse:
+    """
+    Get recent logs from a specific service.
+    """
+    if service not in SERVICE_CONTAINERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Service '{service}' not found. Available: {list(SERVICE_CONTAINERS.keys())}",
+        )
+
+    container = SERVICE_CONTAINERS[service]
+    lines = await get_docker_logs(container, tail, since)
+
+    logs = []
+    for line in lines:
+        log_entry = parse_log_line(line, service, container)
+        if log_entry:
+            if level and log_entry["level"] != level.lower():
+                continue
+            logs.append(log_entry)
+
+    return LogHistoryResponse(
+        data=logs,
+        meta={
+            "service": service,
+            "container": container,
+            "count": len(logs),
+            "tail": tail,
             "level_filter": level,
             "timestamp": datetime.utcnow().isoformat(),
         },

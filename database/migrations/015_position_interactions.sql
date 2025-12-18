@@ -65,9 +65,7 @@ CREATE OR REPLACE VIEW positions.recent_interactions AS
 SELECT
     i.id,
     i.position_id,
-    p.symbol,
-    p.long_exchange,
-    p.short_exchange,
+    COALESCE(p.symbol, i.symbol) as symbol,
     i.timestamp,
     i.interaction_type,
     i.worker_service,

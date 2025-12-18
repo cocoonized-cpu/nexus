@@ -31,6 +31,7 @@ COMMENT ON COLUMN audit.activity_events.decision IS 'Decision made at this event
 COMMENT ON COLUMN audit.activity_events.narrative IS 'Human-readable narrative explaining what happened and why';
 
 -- Update the recent_activity view to include new columns
+DROP VIEW IF EXISTS audit.recent_activity CASCADE;
 CREATE OR REPLACE VIEW audit.recent_activity AS
 SELECT
     id,
