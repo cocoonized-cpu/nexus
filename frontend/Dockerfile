@@ -16,8 +16,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the application
+# Build the application with internal API URL for Docker network
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV INTERNAL_API_URL=http://nexus-gateway:8000
 RUN npm run build
 
 # Production image

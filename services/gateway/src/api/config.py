@@ -453,3 +453,129 @@ async def update_strategy_parameters(
         "message": "Strategy parameters updated",
         "timestamp": datetime.utcnow().isoformat(),
     }
+
+
+@router.post("/settings/factory-reset")
+async def factory_reset(
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Reset all settings to factory defaults.
+
+    This resets:
+    - Strategy parameters
+    - Risk limits
+    - System settings (except credentials)
+
+    Exchange credentials are preserved.
+    """
+    import json
+
+    reset_actions = []
+
+    # Reset strategy parameters to defaults
+    try:
+        strategy_defaults = """
+            UPDATE config.strategy_parameters
+            SET
+                min_spread_pct = 0.03,
+                min_net_apr_pct = 10.0,
+                min_uos_score = 60,
+                min_volume_24h_usd = 1000000,
+                min_open_interest_usd = 5000000,
+                max_expected_slippage_pct = 0.1,
+                liquidity_multiple = 3.0,
+                return_score_weight = 0.30,
+                risk_score_weight = 0.30,
+                execution_score_weight = 0.25,
+                timing_score_weight = 0.15,
+                target_funding_rate_min = 0.01,
+                stop_loss_pct = 5.0,
+                updated_at = NOW()
+            WHERE is_active = true
+        """
+        await db.execute(text(strategy_defaults))
+        reset_actions.append("strategy_parameters")
+    except Exception as e:
+        pass  # Continue with other resets
+
+    # Reset risk limits to defaults
+    try:
+        risk_defaults = """
+            UPDATE config.risk_limits
+            SET
+                max_position_size_usd = 10000,
+                max_position_size_pct = 20.0,
+                max_leverage = 3.0,
+                max_venue_exposure_pct = 50.0,
+                max_asset_exposure_pct = 30.0,
+                max_gross_exposure_pct = 150.0,
+                max_net_exposure_pct = 50.0,
+                max_drawdown_pct = 10.0,
+                max_var_pct = 5.0,
+                max_total_exposure_usd = 100000,
+                max_exchange_exposure_usd = 50000,
+                updated_at = NOW()
+            WHERE is_active = true
+        """
+        await db.execute(text(risk_defaults))
+        reset_actions.append("risk_limits")
+    except Exception as e:
+        pass
+
+    # Reset spread monitoring settings
+    try:
+        # Check if table exists and reset
+        spread_defaults = """
+            UPDATE config.strategy_parameters
+            SET
+                spread_drawdown_exit_pct = 50.0,
+                min_time_to_funding_exit_seconds = 1800,
+                updated_at = NOW()
+            WHERE is_active = true
+        """
+        await db.execute(text(spread_defaults))
+        reset_actions.append("spread_monitoring")
+    except Exception as e:
+        pass
+
+    # Reset max concurrent coins
+    try:
+        max_coins_default = """
+            UPDATE config.strategy_parameters
+            SET max_concurrent_coins = 5, updated_at = NOW()
+            WHERE is_active = true
+        """
+        await db.execute(text(max_coins_default))
+        reset_actions.append("max_concurrent_coins")
+    except Exception as e:
+        pass
+
+    await db.commit()
+
+    # Log the factory reset event
+    try:
+        audit_query = """
+            INSERT INTO audit.activity_events (
+                service, category, event_type, severity, message, details
+            ) VALUES (
+                'gateway', 'config', 'factory_reset', 'warning',
+                'Factory reset performed', :details::jsonb
+            )
+        """
+        await db.execute(text(audit_query), {
+            "details": json.dumps({
+                "reset_actions": reset_actions,
+                "timestamp": datetime.utcnow().isoformat(),
+            }),
+        })
+        await db.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Factory reset completed",
+        "reset_actions": reset_actions,
+        "timestamp": datetime.utcnow().isoformat(),
+    }

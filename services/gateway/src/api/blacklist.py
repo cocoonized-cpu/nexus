@@ -80,6 +80,77 @@ async def list_blacklist(
     }
 
 
+@router.delete("")
+async def clear_blacklist(
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Clear all entries from the symbol blacklist.
+
+    WARNING: This removes all blacklisted symbols. The bot will be able to
+    open positions on all symbols again.
+    """
+    # Count entries first
+    count_query = "SELECT COUNT(*) FROM config.symbol_blacklist"
+    count_result = await db.execute(text(count_query))
+    entry_count = count_result.scalar() or 0
+
+    if entry_count == 0:
+        return {
+            "success": True,
+            "message": "Blacklist is already empty",
+            "entries_removed": 0,
+            "meta": {"timestamp": datetime.utcnow().isoformat()},
+        }
+
+    # Get symbols before deleting (for logging)
+    symbols_query = "SELECT symbol FROM config.symbol_blacklist"
+    symbols_result = await db.execute(text(symbols_query))
+    symbols = [row[0] for row in symbols_result.fetchall()]
+
+    # Delete all entries
+    delete_query = "DELETE FROM config.symbol_blacklist"
+    await db.execute(text(delete_query))
+    await db.commit()
+
+    # Log the clear event
+    await _log_blacklist_event(
+        db,
+        "ALL",
+        "blacklist_cleared",
+        f"Blacklist cleared ({entry_count} symbols removed)",
+        f"Symbols: {', '.join(symbols)}",
+    )
+
+    # Publish event to Redis
+    try:
+        from src.redis_client import get_redis_client
+        import json
+
+        redis = await get_redis_client()
+        await redis.publish(
+            "nexus:config:blacklist_changed",
+            json.dumps(
+                {
+                    "action": "cleared",
+                    "symbols_removed": symbols,
+                    "count": entry_count,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            ),
+        )
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Cleared {entry_count} symbols from blacklist",
+        "entries_removed": entry_count,
+        "symbols_removed": symbols,
+        "meta": {"timestamp": datetime.utcnow().isoformat()},
+    }
+
+
 @router.get("/{symbol}")
 async def get_blacklist_entry(
     symbol: str,

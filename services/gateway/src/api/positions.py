@@ -1074,6 +1074,84 @@ async def get_position(
     )
 
 
+@router.post("/reset-all")
+async def reset_all_positions(
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Reset all positions by marking them as closed.
+
+    This is a recovery/cleanup operation that marks all active positions as closed
+    without actually placing orders on exchanges. Use when position state is out of
+    sync with exchange state.
+
+    WARNING: This does not close positions on exchanges - it only updates the database.
+    """
+    from sqlalchemy import text
+
+    # Count active positions first
+    count_query = """
+        SELECT COUNT(*) FROM positions.active
+        WHERE status NOT IN ('closed', 'cancelled')
+    """
+    count_result = await db.execute(text(count_query))
+    active_count = count_result.scalar() or 0
+
+    if active_count == 0:
+        return {
+            "success": True,
+            "message": "No active positions to reset",
+            "positions_reset": 0,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+
+    # Mark all active positions as closed
+    update_query = """
+        UPDATE positions.active
+        SET status = 'closed',
+            exit_reason = 'manual_reset',
+            closed_at = NOW(),
+            updated_at = NOW()
+        WHERE status NOT IN ('closed', 'cancelled')
+        RETURNING id, symbol
+    """
+    result = await db.execute(text(update_query))
+    reset_positions = result.fetchall()
+    await db.commit()
+
+    # Log the reset event
+    try:
+        symbols = [row[1] for row in reset_positions]
+        audit_query = """
+            INSERT INTO audit.activity_events (
+                service, category, event_type, severity, message, details
+            ) VALUES (
+                'gateway', 'positions', 'positions_reset', 'warning',
+                :message, :details::jsonb
+            )
+        """
+        import json
+        await db.execute(text(audit_query), {
+            "message": f"All positions reset ({len(reset_positions)} positions)",
+            "details": json.dumps({
+                "positions_reset": len(reset_positions),
+                "symbols": symbols,
+                "reason": "manual_reset",
+            }),
+        })
+        await db.commit()
+    except Exception:
+        pass  # Don't fail if logging fails
+
+    return {
+        "success": True,
+        "message": f"Reset {len(reset_positions)} positions",
+        "positions_reset": len(reset_positions),
+        "symbols": [row[1] for row in reset_positions],
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
 @router.post("/{position_id}/close")
 async def close_position(
     position_id: UUID,

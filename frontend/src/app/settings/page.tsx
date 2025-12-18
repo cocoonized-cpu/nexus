@@ -149,6 +149,11 @@ export default function SettingsPage() {
   const [hasMaxCoinsChanges, setHasMaxCoinsChanges] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
+  // Danger Zone state
+  const [showResetPositionsDialog, setShowResetPositionsDialog] = useState(false);
+  const [showClearBlacklistDialog, setShowClearBlacklistDialog] = useState(false);
+  const [showFactoryResetDialog, setShowFactoryResetDialog] = useState(false);
+
   // Queries
   const { data: exchangesData, isLoading: exchangesLoading } = useQuery({
     queryKey: ['exchanges'],
@@ -333,6 +338,98 @@ export default function SettingsPage() {
       toast({
         title: 'Update Failed',
         description: error.message || 'Failed to update position limit.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Danger Zone mutations
+  const resetPositionsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/v1/positions/reset-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to reset positions');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['positions'] });
+      setShowResetPositionsDialog(false);
+      toast({
+        title: 'Positions Reset',
+        description: data.message || `Reset ${data.positions_reset || 0} positions.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Reset Failed',
+        description: error.message || 'Failed to reset positions.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const clearBlacklistMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/v1/blacklist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to clear blacklist');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['blacklist'] });
+      setShowClearBlacklistDialog(false);
+      toast({
+        title: 'Blacklist Cleared',
+        description: data.message || `Removed ${data.entries_removed || 0} entries.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Clear Failed',
+        description: error.message || 'Failed to clear blacklist.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const factoryResetMutation = useMutation({
+    mutationFn: async () => {
+      // Factory reset resets strategy and risk parameters to defaults
+      const response = await fetch('/api/v1/config/settings/factory-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to perform factory reset');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      queryClient.invalidateQueries({ queryKey: ['risk-limits'] });
+      queryClient.invalidateQueries({ queryKey: ['strategy-params'] });
+      queryClient.invalidateQueries({ queryKey: ['spread-monitoring-settings'] });
+      setShowFactoryResetDialog(false);
+      toast({
+        title: 'Factory Reset Complete',
+        description: 'All settings have been reset to defaults.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Reset Failed',
+        description: error.message || 'Failed to perform factory reset.',
         variant: 'destructive',
       });
     },
@@ -1206,8 +1303,19 @@ export default function SettingsPage() {
                         Mark all positions as closed. Use for recovery scenarios.
                       </div>
                     </div>
-                    <Button variant="destructive" disabled>
-                      Reset Positions
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowResetPositionsDialog(true)}
+                      disabled={resetPositionsMutation.isPending}
+                    >
+                      {resetPositionsMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Resetting...
+                        </>
+                      ) : (
+                        'Reset Positions'
+                      )}
                     </Button>
                   </div>
 
@@ -1218,8 +1326,19 @@ export default function SettingsPage() {
                         Remove all entries from the symbol blacklist
                       </div>
                     </div>
-                    <Button variant="destructive" disabled>
-                      Clear Blacklist
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowClearBlacklistDialog(true)}
+                      disabled={clearBlacklistMutation.isPending}
+                    >
+                      {clearBlacklistMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Clearing...
+                        </>
+                      ) : (
+                        'Clear Blacklist'
+                      )}
                     </Button>
                   </div>
 
@@ -1230,8 +1349,19 @@ export default function SettingsPage() {
                         Reset all settings to defaults (credentials preserved)
                       </div>
                     </div>
-                    <Button variant="destructive" disabled>
-                      Factory Reset
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowFactoryResetDialog(true)}
+                      disabled={factoryResetMutation.isPending}
+                    >
+                      {factoryResetMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Resetting...
+                        </>
+                      ) : (
+                        'Factory Reset'
+                      )}
                     </Button>
                   </div>
                 </CardContent>
@@ -1366,6 +1496,139 @@ export default function SettingsPage() {
                   <Save className="h-4 w-4 mr-2" />
                 )}
                 Save Credentials
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reset Positions Confirmation Dialog */}
+        <Dialog open={showResetPositionsDialog} onOpenChange={setShowResetPositionsDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Reset All Positions
+              </DialogTitle>
+              <DialogDescription>
+                This action will mark all active positions as closed in the database.
+                <strong className="block mt-2 text-destructive">
+                  Warning: This does NOT close positions on exchanges. Use only for recovery
+                  when database state is out of sync with exchange state.
+                </strong>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowResetPositionsDialog(false)}
+                disabled={resetPositionsMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => resetPositionsMutation.mutate()}
+                disabled={resetPositionsMutation.isPending}
+              >
+                {resetPositionsMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  'Yes, Reset All Positions'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Clear Blacklist Confirmation Dialog */}
+        <Dialog open={showClearBlacklistDialog} onOpenChange={setShowClearBlacklistDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Clear Symbol Blacklist
+              </DialogTitle>
+              <DialogDescription>
+                This action will remove all symbols from the blacklist.
+                <strong className="block mt-2">
+                  The bot will be able to open positions on all symbols again.
+                </strong>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowClearBlacklistDialog(false)}
+                disabled={clearBlacklistMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => clearBlacklistMutation.mutate()}
+                disabled={clearBlacklistMutation.isPending}
+              >
+                {clearBlacklistMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Clearing...
+                  </>
+                ) : (
+                  'Yes, Clear Blacklist'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Factory Reset Confirmation Dialog */}
+        <Dialog open={showFactoryResetDialog} onOpenChange={setShowFactoryResetDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-destructive flex items-center gap-2">
+                <AlertCircle className="h-5 w-5" />
+                Factory Reset
+              </DialogTitle>
+              <DialogDescription>
+                This action will reset all settings to their default values.
+                <strong className="block mt-2">
+                  Your exchange credentials will be preserved.
+                </strong>
+                <span className="block mt-2 text-sm">
+                  The following will be reset:
+                </span>
+                <ul className="list-disc list-inside mt-1 text-sm">
+                  <li>Strategy parameters</li>
+                  <li>Risk limits</li>
+                  <li>Spread monitoring settings</li>
+                  <li>System settings</li>
+                </ul>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowFactoryResetDialog(false)}
+                disabled={factoryResetMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => factoryResetMutation.mutate()}
+                disabled={factoryResetMutation.isPending}
+              >
+                {factoryResetMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  'Yes, Factory Reset'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
