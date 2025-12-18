@@ -397,6 +397,15 @@ class OpportunityDetector:
         except Exception as e:
             logger.warning("Failed to refresh allocation context", error=str(e))
 
+    async def _refresh_allocation_context_loop(self) -> None:
+        """Periodically refresh allocation context."""
+        while self._running:
+            await asyncio.sleep(30)  # Refresh every 30 seconds
+            try:
+                await self._refresh_allocation_context()
+            except Exception as e:
+                logger.warning("Error in allocation context refresh loop", error=str(e))
+
     async def _refresh_exchange_credentials(self) -> None:
         """Periodically refresh the list of exchanges with credentials."""
         while self._running:
