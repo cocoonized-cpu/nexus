@@ -135,6 +135,46 @@ class UOSScores(BaseModel):
         return "poor"
 
 
+class BotActionStatus(str, Enum):
+    """Bot action status for an opportunity."""
+
+    AUTO_TRADE = "auto_trade"  # Will be automatically executed
+    MANUAL_ONLY = "manual_only"  # Can execute manually, not auto-traded
+    WAITING = "waiting"  # Blocked by temporary conditions
+    BLOCKED = "blocked"  # Cannot be executed
+
+
+class BotActionDetail(BaseModel):
+    """Individual rule evaluation detail for bot action."""
+
+    rule: str = Field(..., description="Rule identifier (e.g., 'uos_score', 'auto_execute')")
+    passed: bool = Field(..., description="Whether this rule passed")
+    current: Optional[str] = Field(None, description="Current value (as string for display)")
+    threshold: Optional[str] = Field(None, description="Threshold value (as string for display)")
+    message: str = Field(..., description="Human-readable explanation")
+
+
+class BotAction(BaseModel):
+    """
+    Bot trading action status for an opportunity.
+
+    Explains why the bot is or isn't trading this opportunity
+    and what action the user can take.
+    """
+
+    status: BotActionStatus = Field(..., description="Overall action status")
+    reason: str = Field(..., description="Brief explanation (one line)")
+    details: list[BotActionDetail] = Field(
+        default_factory=list, description="Detailed rule evaluations"
+    )
+    user_action: Optional[str] = Field(
+        None, description="What user can do to enable trading (if blocked)"
+    )
+    can_execute: bool = Field(
+        True, description="Whether manual execution is possible"
+    )
+
+
 class Opportunity(BaseModel):
     """
     Complete arbitrage opportunity.
