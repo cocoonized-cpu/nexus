@@ -467,8 +467,8 @@ export default function SituationRoomPage() {
           </CardContent>
         </Card>
 
-        {/* System Logs & Activity Log Side by Side */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        {/* System Logs & Activity Log Stacked */}
+        <div className="space-y-6">
           {/* Docker System Logs */}
           <SystemLogPanel maxHeight="400px" />
 
