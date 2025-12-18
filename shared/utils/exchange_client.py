@@ -94,9 +94,11 @@ class ExchangeClient:
 
         config: dict[str, Any] = {
             "enableRateLimit": True,
+            "adjustForTimeDifference": True,  # Auto-sync with exchange server time
             "options": {
                 "defaultType": "swap",  # Use perpetual/futures
                 "warnOnFetchOpenOrdersWithoutSymbol": False,  # Suppress warning for fetching all orders
+                "recvWindow": 10000,  # Increase receive window to 10 seconds (default is 5000ms)
             },
         }
 
