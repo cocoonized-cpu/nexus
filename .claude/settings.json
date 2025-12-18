@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/larsheinemann/dev/NEXUS && if [ -n \"$(git status --porcelain)\" ]; then git add -A && git commit -m \"Auto-commit: $(date '+%Y-%m-%d %H:%M:%S')\" --no-verify 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/larsheinemann/dev/NEXUS && if [ -n \"$(git status --porcelain)\" ]; then git add -A && git commit -m \"Session checkpoint: $(date '+%Y-%m-%d %H:%M:%S')\" --no-verify && git push origin main 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
