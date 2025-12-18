@@ -592,6 +592,9 @@ export default function OpportunitiesPage() {
                             </div>
                           </td>
                           <td className="py-4">
+                            <BotActionCell botAction={opp.bot_action} />
+                          </td>
+                          <td className="py-4">
                             <div className="flex items-center gap-2">
                               <Badge
                                 variant="outline"
