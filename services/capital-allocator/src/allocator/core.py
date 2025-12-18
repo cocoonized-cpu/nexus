@@ -265,18 +265,21 @@ class CapitalAllocator:
 
                 for key, value, data_type in rows:
                     if key in self._config:
-                        if data_type == "decimal":
-                            self._config[key] = Decimal(value)
-                        elif data_type == "integer":
-                            self._config[key] = int(value)
-                        elif data_type == "boolean":
-                            # Handle both string and boolean values
-                            if isinstance(value, bool):
-                                self._config[key] = value
-                            else:
-                                self._config[key] = str(value).lower() == "true"
-                        elif data_type == "float":
-                            self._config[key] = float(value)
+                        try:
+                            if data_type == "decimal":
+                                self._config[key] = Decimal(str(value))
+                            elif data_type == "integer":
+                                self._config[key] = int(value)
+                            elif data_type == "boolean":
+                                # Handle both native bool and string values from JSONB
+                                if isinstance(value, bool):
+                                    self._config[key] = value
+                                else:
+                                    self._config[key] = str(value).lower() in ("true", "1", "yes")
+                            elif data_type == "float":
+                                self._config[key] = float(value)
+                        except (ValueError, TypeError, AttributeError) as parse_error:
+                            logger.warning(f"Failed to parse config value for {key}", error=str(parse_error), value=value, data_type=data_type)
 
                 logger.info("Loaded capital config from database")
 
