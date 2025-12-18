@@ -95,83 +95,87 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
           {config.label}
         </Badge>
       </TooltipTrigger>
-      <TooltipContent
-        side="left"
-        className="max-w-sm p-0 bg-popover border border-border shadow-lg"
-        sideOffset={8}
-      >
-        <div className="p-3 space-y-3">
-          {/* Header */}
-          <div className="border-b border-border pb-2">
-            <div className={cn('font-semibold flex items-center gap-2', config.textColor)}>
-              <Icon className="h-4 w-4" />
-              {config.label}
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              {botAction.reason}
-            </p>
-          </div>
-
-          {/* Failed Rules (if any) */}
-          {failedRules.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-xs font-medium text-red-500 uppercase tracking-wide">
-                Blocking Rules
+      <TooltipPrimitive.Portal>
+        <TooltipContent
+          side="left"
+          className="z-[100] max-w-md p-0 bg-popover border border-border shadow-xl"
+          sideOffset={8}
+        >
+          <div className="p-4 space-y-3">
+            {/* Header */}
+            <div className="border-b border-border pb-3">
+              <div className={cn('font-semibold flex items-center gap-2 text-base', config.textColor)}>
+                <Icon className="h-5 w-5" />
+                {config.label}
               </div>
-              {failedRules.map((detail, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm">
-                  <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-foreground">{detail.message}</span>
-                    {detail.current && detail.threshold && (
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        Current: {detail.current} | Required: {detail.threshold}
-                      </div>
-                    )}
+              <p className="text-sm text-muted-foreground mt-1.5">
+                {botAction.reason}
+              </p>
+            </div>
+
+            {/* Failed Rules (if any) */}
+            {failedRules.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-red-500 uppercase tracking-wide">
+                  Blocking Rules
+                </div>
+                {failedRules.map((detail, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm bg-red-500/10 rounded-md p-2">
+                    <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-foreground font-medium">{detail.message}</span>
+                      {detail.current && detail.threshold && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Current: <span className="text-red-400">{detail.current}</span> | Required: <span className="text-green-400">{detail.threshold}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Passed Rules */}
-          {passedRules.length > 0 && (
-            <div className="space-y-1.5">
-              <div className="text-xs font-medium text-green-500 uppercase tracking-wide">
-                Passed Checks
+                ))}
               </div>
-              {passedRules.slice(0, 5).map((detail, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm">
-                  <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                  <span className="text-muted-foreground">{detail.message}</span>
-                </div>
-              ))}
-              {passedRules.length > 5 && (
-                <div className="text-xs text-muted-foreground pl-6">
-                  +{passedRules.length - 5} more checks passed
-                </div>
-              )}
-            </div>
-          )}
+            )}
 
-          {/* User Action */}
-          {botAction.user_action && (
-            <div className="border-t border-border pt-2">
-              <div className="flex items-start gap-2 text-sm">
-                <span className="text-blue-400">→</span>
-                <span className="text-blue-400">{botAction.user_action}</span>
+            {/* Passed Rules */}
+            {passedRules.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-green-500 uppercase tracking-wide">
+                  Passed Checks
+                </div>
+                <div className="space-y-1">
+                  {passedRules.slice(0, 5).map((detail, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                      <span className="text-muted-foreground">{detail.message}</span>
+                    </div>
+                  ))}
+                  {passedRules.length > 5 && (
+                    <div className="text-xs text-muted-foreground pl-6">
+                      +{passedRules.length - 5} more checks passed
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Can Execute Note */}
-          {!botAction.can_execute && (
-            <div className="text-xs text-red-400 border-t border-border pt-2">
-              Manual execution is not available for this opportunity
-            </div>
-          )}
-        </div>
-      </TooltipContent>
+            {/* User Action */}
+            {botAction.user_action && (
+              <div className="border-t border-border pt-3">
+                <div className="flex items-start gap-2 text-sm bg-blue-500/10 rounded-md p-2">
+                  <span className="text-blue-400 font-bold">→</span>
+                  <span className="text-blue-400 font-medium">{botAction.user_action}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Can Execute Note */}
+            {!botAction.can_execute && (
+              <div className="text-xs text-red-400 border-t border-border pt-3 font-medium">
+                Manual execution is not available for this opportunity
+              </div>
+            )}
+          </div>
+        </TooltipContent>
+      </TooltipPrimitive.Portal>
     </Tooltip>
   );
 }
