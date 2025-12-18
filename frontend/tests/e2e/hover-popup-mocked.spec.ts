@@ -140,7 +140,7 @@ test.describe('Hover Popup with Mocked Data', () => {
 
   test('should show auto-trade badge hover with passed checks', async ({ page }) => {
     // Mock the opportunities API
-    await page.route('**/api/v1/opportunities*', async route => {
+    await page.route('**/opportunities/live*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
