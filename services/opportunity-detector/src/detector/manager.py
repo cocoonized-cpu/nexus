@@ -996,17 +996,17 @@ class OpportunityDetector:
 
             # Calculate recommended position size based on score
             # Get max position size from risk limits (default $5000)
-            max_size = self._risk_limits.get("max_position_size_usd", 5000)
+            max_size = Decimal(str(self._risk_limits.get("max_position_size_usd", 5000)))
 
             # Base size scaled by UOS score quality, capped at max_position_size_usd
             if total_score >= 80:  # exceptional - use up to max allowed
                 recommended_size = max_size
             elif total_score >= 70:  # strong - 50% of max
-                recommended_size = max_size * 0.5
+                recommended_size = max_size * Decimal("0.5")
             elif total_score >= 60:  # good - 20% of max
-                recommended_size = max_size * 0.2
+                recommended_size = max_size * Decimal("0.2")
             else:  # minimum size - 10% of max
-                recommended_size = max_size * 0.1
+                recommended_size = max_size * Decimal("0.1")
 
             # Update opportunity
             opportunity.funding_spread = spread["spread"]
