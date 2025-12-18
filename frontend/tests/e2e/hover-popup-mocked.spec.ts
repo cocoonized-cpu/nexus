@@ -8,7 +8,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Hover Popup with Mocked Data', () => {
   test('should show hover popup on badge hover (mocked data)', async ({ page }) => {
     // Mock the opportunities API to return test data
-    await page.route('**/api/v1/opportunities*', async route => {
+    // The actual endpoint is /api/v1/opportunities/live
+    await page.route('**/opportunities/live*', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
