@@ -130,7 +130,7 @@ class TestOpportunity:
         )
 
         opportunity = Opportunity(
-            id=uuid4(),
+            id=str(uuid4()),
             base_asset="BTC",
             symbol="BTCUSDT",
             opportunity_type=OpportunityType.CROSS_EXCHANGE_PERP,

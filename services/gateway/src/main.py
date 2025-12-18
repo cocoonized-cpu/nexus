@@ -11,8 +11,8 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from src.api import (analytics_router, capital_router, config_router,
-                     funding_router, health_router, opportunities_router,
+from src.api import (analytics_router, blacklist_router, capital_router, config_router,
+                     funding_router, health_router, logs_router, opportunities_router,
                      positions_router, risk_router, system_router)
 from src.database import close_database, init_database
 from src.websocket.manager import WebSocketManager
@@ -115,6 +115,8 @@ app.include_router(config_router, prefix="/api/v1/config", tags=["Configuration"
 app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(system_router, prefix="/api/v1/system", tags=["System"])
 app.include_router(funding_router, prefix="/api/v1/funding", tags=["Funding"])
+app.include_router(blacklist_router, prefix="/api/v1/blacklist", tags=["Blacklist"])
+app.include_router(logs_router, prefix="/api/v1/system/logs", tags=["Logs"])
 app.include_router(websocket_router, tags=["WebSocket"])
 
 

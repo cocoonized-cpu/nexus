@@ -270,7 +270,11 @@ class CapitalAllocator:
                         elif data_type == "integer":
                             self._config[key] = int(value)
                         elif data_type == "boolean":
-                            self._config[key] = value.lower() == "true"
+                            # Handle both string and boolean values
+                            if isinstance(value, bool):
+                                self._config[key] = value
+                            else:
+                                self._config[key] = str(value).lower() == "true"
                         elif data_type == "float":
                             self._config[key] = float(value)
 

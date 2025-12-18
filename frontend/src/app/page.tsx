@@ -4,7 +4,6 @@ import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { PnLInsights } from '@/components/dashboard/pnl-insights';
 import { BotStatusCard } from '@/components/dashboard/bot-status-card';
 import { BotPerformanceMetrics } from '@/components/dashboard/bot-performance-metrics';
-import { ActivePositionsPerformance } from '@/components/dashboard/active-positions-performance';
 import { OpportunitiesTable } from '@/components/dashboard/opportunities-table';
 import { LayoutDashboard } from 'lucide-react';
 
@@ -27,16 +26,13 @@ export default function DashboardPage() {
         <PnLInsights />
 
         {/* Bot Status & Performance Metrics */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2">
           <BotStatusCard />
           <BotPerformanceMetrics />
-          <ActivePositionsPerformance className="lg:row-span-2" maxPositions={4} />
-
-          {/* Top Opportunities Mini Table */}
-          <div className="md:col-span-2 lg:col-span-2">
-            <OpportunitiesTable />
-          </div>
         </div>
+
+        {/* Opportunities Table - Expanded Full Width */}
+        <OpportunitiesTable />
       </div>
     </DashboardLayout>
   );

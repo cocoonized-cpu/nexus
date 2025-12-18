@@ -24,13 +24,30 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   TrendingUp,
   TrendingDown,
   X,
   Loader2,
   RefreshCw,
   AlertTriangle,
+  Ban,
+  Eye,
+  History,
+  MoreHorizontal,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/utils';
 import { closePosition } from '@/lib/api';
@@ -39,6 +56,7 @@ import {
   useConsolidatedPositions,
   ConsolidatedPosition,
 } from '@/hooks/use-consolidated-positions';
+import { useRouter } from 'next/navigation';
 
 const HEALTH_COLORS: Record<string, { bg: string; text: string }> = {
   healthy: { bg: 'bg-green-500/10', text: 'text-green-500' },
@@ -56,10 +74,48 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 export function ConsolidatedPositionsTable() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { toast } = useToast();
   const { positions, stats, isLoading, refetch } = useConsolidatedPositions();
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null);
   const [showCloseAllDialog, setShowCloseAllDialog] = useState(false);
+  const [blacklistingSymbol, setBlacklistingSymbol] = useState<string | null>(null);
+
+  // Blacklist symbol mutation
+  const blacklistMutation = useMutation({
+    mutationFn: async (symbol: string) => {
+      const response = await fetch(`/api/v1/blacklist/${symbol}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Blacklisted from positions page' }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to blacklist symbol');
+      }
+      return response.json();
+    },
+    onSuccess: (data, symbol) => {
+      toast({
+        title: 'Symbol Blacklisted',
+        description: `${symbol} has been added to the blacklist. No new positions will be opened for this symbol.`,
+      });
+      setBlacklistingSymbol(null);
+    },
+    onError: (error: Error, symbol) => {
+      toast({
+        title: 'Blacklist Failed',
+        description: error.message || `Failed to blacklist ${symbol}`,
+        variant: 'destructive',
+      });
+      setBlacklistingSymbol(null);
+    },
+  });
+
+  const handleBlacklist = (symbol: string) => {
+    setBlacklistingSymbol(symbol);
+    blacklistMutation.mutate(symbol);
+  };
 
   // Close position mutation
   const closeMutation = useMutation({
@@ -374,58 +430,129 @@ export function ConsolidatedPositionsTable() {
 
                       {/* Actions */}
                       <td className="py-4 text-right">
-                        {position.status === 'active' && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={isClosing}
-                              >
-                                {isClosing ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <>
-                                    <X className="h-3 w-3 mr-1" />
-                                    Close
-                                  </>
-                                )}
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Close Position</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This will close the {position.symbol} position by placing market
-                                  orders on both exchanges. Current P&L:{' '}
-                                  <span
-                                    className={cn(
-                                      'font-bold',
-                                      position.netPnl >= 0 ? 'text-green-500' : 'text-red-500'
-                                    )}
-                                  >
-                                    {formatCurrency(position.netPnl)}
-                                  </span>
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleClose(position.positionId)}
-                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        <TooltipProvider>
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Quick Action Buttons */}
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => router.push(`/positions/${position.positionId}`)}
                                 >
-                                  Confirm Close
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
-                        {position.status === 'closing' && (
-                          <Badge variant="secondary">
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            Closing...
-                          </Badge>
-                        )}
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View Details</TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => router.push(`/positions/${position.positionId}/interactions`)}
+                                >
+                                  <History className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>View Interactions</TooltipContent>
+                            </Tooltip>
+
+                            {/* More Actions Dropdown */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => router.push(`/positions/${position.positionId}`)}
+                                >
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => router.push(`/positions/${position.positionId}/interactions`)}
+                                >
+                                  <History className="h-4 w-4 mr-2" />
+                                  View Interactions
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleBlacklist(position.symbol)}
+                                  disabled={blacklistingSymbol === position.symbol}
+                                  className="text-orange-600"
+                                >
+                                  {blacklistingSymbol === position.symbol ? (
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  ) : (
+                                    <Ban className="h-4 w-4 mr-2" />
+                                  )}
+                                  Blacklist {position.symbol}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* Close Button */}
+                            {position.status === 'active' && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={isClosing}
+                                    className="ml-1"
+                                  >
+                                    {isClosing ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <X className="h-3 w-3 mr-1" />
+                                        Close
+                                      </>
+                                    )}
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Close Position</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This will close the {position.symbol} position by placing market
+                                      orders on both exchanges. Current P&L:{' '}
+                                      <span
+                                        className={cn(
+                                          'font-bold',
+                                          position.netPnl >= 0 ? 'text-green-500' : 'text-red-500'
+                                        )}
+                                      >
+                                        {formatCurrency(position.netPnl)}
+                                      </span>
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleClose(position.positionId)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Confirm Close
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+                            {position.status === 'closing' && (
+                              <Badge variant="secondary">
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Closing...
+                              </Badge>
+                            )}
+                          </div>
+                        </TooltipProvider>
                       </td>
                     </tr>
                   );

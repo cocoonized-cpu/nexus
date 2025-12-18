@@ -56,7 +56,7 @@ import { Label } from '@/components/ui/label';
 import { useWebSocket } from '@/lib/websocket';
 import { useToast } from '@/components/ui/use-toast';
 import { ActivityLogEnhanced } from '@/components/situation-room/activity-log-enhanced';
-import { RiskOverviewPanel } from '@/components/situation-room/risk-overview-panel';
+import { SystemLogPanel } from '@/components/situation-room/system-log-panel';
 import { ServiceControlCard } from '@/components/situation-room/service-control-card';
 
 interface SystemStatus {
@@ -430,51 +430,51 @@ export default function SituationRoomPage() {
           </CardContent>
         </Card>
 
-        {/* System Status & Risk Overview */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Services Health */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Server className="h-5 w-5" />
-                    System Status
-                  </CardTitle>
-                  <CardDescription>
-                    {healthyServices}/{totalServices} services healthy
-                  </CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => refetchServices()}>
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
+        {/* System Status - Full Width */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Server className="h-5 w-5" />
+                  System Status
+                </CardTitle>
+                <CardDescription>
+                  {healthyServices}/{totalServices} services healthy
+                </CardDescription>
               </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingServices ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {services.map((service) => (
-                    <ServiceControlCard
-                      key={service.name}
-                      service={service}
-                      displayName={SERVICE_DISPLAY_NAMES[service.name] || service.name}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <Button variant="outline" size="sm" onClick={() => refetchServices()}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoadingServices ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {services.map((service) => (
+                  <ServiceControlCard
+                    key={service.name}
+                    service={service}
+                    displayName={SERVICE_DISPLAY_NAMES[service.name] || service.name}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-          {/* Risk Overview */}
-          <RiskOverviewPanel />
+        {/* System Logs & Activity Log Side by Side */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Docker System Logs */}
+          <SystemLogPanel maxHeight="400px" />
+
+          {/* Activity Log */}
+          <ActivityLogEnhanced maxHeight="400px" />
         </div>
-
-        {/* Activity Log */}
-        <ActivityLogEnhanced maxHeight="500px" />
       </div>
     </DashboardLayout>
   );

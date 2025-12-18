@@ -75,6 +75,10 @@ class OpportunityDetector:
         # Only opportunities involving these exchanges will be considered executable
         self._exchanges_with_credentials: set[str] = set()
 
+        # Blacklisted symbols (loaded from database)
+        # Opportunities for these symbols will never be created
+        self._blacklisted_symbols: set[str] = set()
+
         # Configuration (would be loaded from DB in production)
         self._config = {
             "min_spread_pct": 0.01,  # Minimum 0.01% spread
@@ -101,6 +105,7 @@ class OpportunityDetector:
             "opportunities_expired": 0,
             "opportunities_published": 0,
             "opportunities_skipped_no_credentials": 0,
+            "opportunities_skipped_blacklisted": 0,
             "auto_executions_triggered": 0,
             "start_time": None,
         }
@@ -125,6 +130,9 @@ class OpportunityDetector:
         # Load exchanges with configured credentials
         await self._load_exchanges_with_credentials()
 
+        # Load blacklisted symbols
+        await self._load_blacklisted_symbols()
+
         # Recover unexpired opportunities from database
         await self._recover_opportunities()
 
@@ -136,6 +144,7 @@ class OpportunityDetector:
             asyncio.create_task(self._listen_position_events()),
             asyncio.create_task(self._refresh_exchange_credentials()),
             asyncio.create_task(self._listen_config_updates()),
+            asyncio.create_task(self._listen_blacklist_updates()),
             asyncio.create_task(self._run_redis_listener()),
             asyncio.create_task(self._publish_status_updates()),
         ]
@@ -145,6 +154,7 @@ class OpportunityDetector:
             auto_execute=self.state_manager.auto_execute,
             system_running=self.state_manager.is_running,
             executable_exchanges=list(self._exchanges_with_credentials),
+            blacklisted_symbols=list(self._blacklisted_symbols),
         )
 
     async def stop(self) -> None:
@@ -235,6 +245,81 @@ class OpportunityDetector:
 
         except Exception as e:
             logger.error("Failed to load exchanges with credentials", error=str(e))
+
+    async def _load_blacklisted_symbols(self) -> None:
+        """Load blacklisted symbols from database."""
+        if not self.db_session_factory:
+            logger.warning("No database connection - cannot load blacklisted symbols")
+            return
+
+        try:
+            async with self.db_session_factory() as db:
+                result = await db.execute(text("""
+                    SELECT symbol FROM config.symbol_blacklist
+                """))
+                rows = result.fetchall()
+
+                self._blacklisted_symbols = {row[0].upper() for row in rows}
+
+                logger.info(
+                    "Loaded blacklisted symbols",
+                    symbols=list(self._blacklisted_symbols),
+                    count=len(self._blacklisted_symbols),
+                )
+
+        except Exception as e:
+            logger.warning("Failed to load blacklisted symbols", error=str(e))
+
+    async def _listen_blacklist_updates(self) -> None:
+        """Listen for blacklist changes via Redis pub/sub."""
+        try:
+            await self.redis.subscribe(
+                "nexus:config:blacklist_changed",
+                self._handle_blacklist_update,
+            )
+            logger.info("Subscribed to blacklist updates")
+        except Exception as e:
+            logger.error("Failed to subscribe to blacklist updates", error=str(e))
+
+    async def _handle_blacklist_update(self, channel: str, message: str) -> None:
+        """Handle blacklist change notifications."""
+        try:
+            data = json.loads(message)
+            action = data.get("action")
+            symbol = data.get("symbol", "").upper()
+
+            if action == "added" and symbol:
+                self._blacklisted_symbols.add(symbol)
+                logger.info(
+                    "Symbol added to blacklist",
+                    symbol=symbol,
+                    reason=data.get("reason"),
+                )
+
+                # Remove any active opportunities for this symbol
+                opps_to_remove = [
+                    opp_id for opp_id, opp in self._opportunities.items()
+                    if opp.symbol.upper() == symbol
+                ]
+                for opp_id in opps_to_remove:
+                    opp = self._opportunities.pop(opp_id)
+                    await self._publish_expired(opp, "blacklisted")
+                    logger.info(
+                        "Removed opportunity for blacklisted symbol",
+                        opportunity_id=opp_id,
+                        symbol=symbol,
+                    )
+
+            elif action == "removed" and symbol:
+                self._blacklisted_symbols.discard(symbol)
+                logger.info("Symbol removed from blacklist", symbol=symbol)
+
+        except Exception as e:
+            logger.error("Failed to handle blacklist update", error=str(e))
+
+    def _is_symbol_blacklisted(self, symbol: str) -> bool:
+        """Check if a symbol is blacklisted."""
+        return symbol.upper() in self._blacklisted_symbols
 
     async def _refresh_exchange_credentials(self) -> None:
         """Periodically refresh the list of exchanges with credentials."""
@@ -452,6 +537,17 @@ class OpportunityDetector:
         long_exchange = spread.get("long_exchange", "")
         short_exchange = spread.get("short_exchange", "")
         spread_pct = spread.get("spread_pct", 0)
+
+        # Check if symbol is blacklisted
+        if self._is_symbol_blacklisted(symbol):
+            self._stats["opportunities_skipped_blacklisted"] += 1
+            # Log occasionally to avoid spam
+            if self._stats["opportunities_skipped_blacklisted"] % 100 == 1:
+                logger.debug(
+                    "Skipping opportunity - symbol is blacklisted",
+                    symbol=symbol,
+                )
+            return
 
         # Check minimum spread threshold
         if spread_pct < self._config["min_spread_pct"]:
@@ -917,11 +1013,13 @@ class OpportunityDetector:
             "opportunities_expired": self._stats["opportunities_expired"],
             "opportunities_published": self._stats["opportunities_published"],
             "opportunities_skipped_no_credentials": self._stats["opportunities_skipped_no_credentials"],
+            "opportunities_skipped_blacklisted": self._stats["opportunities_skipped_blacklisted"],
             "auto_executions_triggered": self._stats["auto_executions_triggered"],
             "active_opportunities": len(self._opportunities),
             "auto_execute_enabled": self.state_manager.auto_execute,
             "system_running": self.state_manager.is_running,
             "executable_exchanges": list(self._exchanges_with_credentials),
+            "blacklisted_symbols": list(self._blacklisted_symbols),
             "config": self._config,
         }
 

@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/tooltip';
 import { HelpCircle, Search } from 'lucide-react';
 import { getOpportunities, getPositions, executeOpportunity } from '@/lib/api';
-import { formatPercent, formatCurrency, getScoreColor } from '@/lib/utils';
+import { formatPercent, formatCurrency, getScoreColor, cn } from '@/lib/utils';
 import { useWebSocket } from '@/lib/websocket';
 import { useToast } from '@/components/ui/use-toast';
 import { CountdownCell } from '@/components/opportunities/countdown-cell';
@@ -57,6 +57,7 @@ import {
   ArrowRightLeft,
   Zap,
 } from 'lucide-react';
+import Link from 'next/link';
 
 // Sort key type for opportunities
 type OpportunitySortKey = 'symbol' | 'spread' | 'net_apr' | 'uos_score' | 'expires' | 'long_exchange' | 'short_exchange' | 'status';
@@ -525,10 +526,21 @@ export default function OpportunitiesPage() {
                       const shortRate = opp.short_leg?.funding_rate || opp.hedge_rate || 0;
 
                       return (
-                        <tr key={opp.id} className="border-b hover:bg-muted/50">
+                        <tr
+                          key={opp.id}
+                          className={cn(
+                            'border-b hover:bg-muted/50',
+                            opp.status === 'executing' && 'bg-orange-500/5'
+                          )}
+                        >
                           <td className="py-4">
-                            <div className="font-medium">{opp.symbol}</div>
-                            <div className="text-xs text-muted-foreground">{opp.base_asset}</div>
+                            <Link
+                              href={`/funding-rates?symbol=${opp.symbol}`}
+                              className="hover:underline"
+                            >
+                              <div className="font-medium text-primary">{opp.symbol}</div>
+                              <div className="text-xs text-muted-foreground">{opp.base_asset}</div>
+                            </Link>
                           </td>
                           <td className="py-4">
                             <div className="flex items-center gap-1">

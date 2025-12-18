@@ -3,11 +3,41 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { PositionSpreadChart } from '@/components/positions/position-spread-chart';
-import { ArrowLeft, ExternalLink, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ExternalLink,
+  AlertCircle,
+  Loader2,
+  History,
+  Ban,
+  RefreshCw,
+  HelpCircle,
+  Clock,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react';
+import { useWebSocket } from '@/lib/websocket';
+import { useToast } from '@/components/ui/use-toast';
+import { cn } from '@/lib/utils';
+import { formatCurrency, formatPercent } from '@/lib/utils';
 
 // Types
 interface PositionLeg {
@@ -48,6 +78,27 @@ interface Position {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+const HEALTH_CONFIG: Record<string, { bg: string; text: string; icon: React.ComponentType<{ className?: string }> }> = {
+  healthy: { bg: 'bg-green-500/10', text: 'text-green-500', icon: CheckCircle2 },
+  attention: { bg: 'bg-yellow-500/10', text: 'text-yellow-500', icon: AlertTriangle },
+  warning: { bg: 'bg-orange-500/10', text: 'text-orange-500', icon: AlertTriangle },
+  critical: { bg: 'bg-red-500/10', text: 'text-red-500', icon: XCircle },
+  unknown: { bg: 'bg-gray-500/10', text: 'text-gray-500', icon: Activity },
+};
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${mins}m`;
+  }
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return `${days}d ${hours}h`;
+}
+
 async function fetchPosition(id: string): Promise<Position> {
   const response = await fetch(`${API_BASE}/api/v1/positions/${id}`);
   if (!response.ok) {
@@ -83,21 +134,66 @@ export default function PositionDetailPage() {
   const params = useParams();
   const router = useRouter();
   const positionId = params.id as string;
+  const queryClient = useQueryClient();
+  const { subscribe, lastMessage } = useWebSocket();
+  const { toast } = useToast();
+  const [showForecast, setShowForecast] = useState(false);
 
-  const [position, setPosition] = useState<Position | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Real-time data fetching with React Query
+  const { data: position, isLoading, error, refetch } = useQuery({
+    queryKey: ['position-detail', positionId],
+    queryFn: () => fetchPosition(positionId),
+    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    enabled: !!positionId,
+  });
 
+  // Subscribe to WebSocket updates for this position
   useEffect(() => {
     if (positionId) {
-      fetchPosition(positionId)
-        .then(setPosition)
-        .catch((err) => setError(err.message))
-        .finally(() => setLoading(false));
+      subscribe(`positions:${positionId}`);
     }
-  }, [positionId]);
+  }, [subscribe, positionId]);
 
-  if (loading) {
+  // Refetch on WebSocket updates
+  useEffect(() => {
+    if (lastMessage?.channel === `positions:${positionId}`) {
+      refetch();
+    }
+  }, [lastMessage, positionId, refetch]);
+
+  // Blacklist mutation
+  const blacklistMutation = useMutation({
+    mutationFn: async (symbol: string) => {
+      const response = await fetch(`${API_BASE}/api/v1/blacklist/${symbol}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Blacklisted from position details page' }),
+      });
+      if (!response.ok) throw new Error('Failed to blacklist symbol');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Symbol Blacklisted',
+        description: `${position?.symbol} has been added to the blacklist.`,
+      });
+      router.push('/positions');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Blacklist Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Calculate hold duration
+  const holdDuration = position?.opened_at
+    ? Math.floor((Date.now() - new Date(position.opened_at).getTime()) / 1000)
+    : 0;
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -110,7 +206,7 @@ export default function PositionDetailPage() {
       <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4">
         <AlertCircle className="h-12 w-12 text-destructive" />
         <h2 className="text-xl font-semibold">Position Not Found</h2>
-        <p className="text-muted-foreground">{error || 'Unable to load position details'}</p>
+        <p className="text-muted-foreground">{error instanceof Error ? error.message : 'Unable to load position details'}</p>
         <Button onClick={() => router.push('/positions')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Positions
@@ -155,31 +251,191 @@ export default function PositionDetailPage() {
     }
   };
 
+  const healthConfig = HEALTH_CONFIG[position.health_status] || HEALTH_CONFIG.unknown;
+  const HealthIcon = healthConfig.icon;
+
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/positions">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
+    <TooltipProvider>
+      <div className="container mx-auto py-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/positions">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold flex items-center gap-3">
+                {position.symbol}
+                <Badge
+                  variant="outline"
+                  className={cn('gap-1', healthConfig.bg, healthConfig.text)}
+                >
+                  <HealthIcon className="h-3 w-3" />
+                  {position.health_status}
+                </Badge>
+              </h1>
+              <p className="text-muted-foreground">{position.opportunity_type} Position</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
             </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold">{position.symbol}</h1>
-            <p className="text-muted-foreground">{position.opportunity_type} Position</p>
+            <Link href={`/positions/${positionId}/interactions`}>
+              <Button variant="outline" size="sm">
+                <History className="h-4 w-4 mr-2" />
+                Interactions
+              </Button>
+            </Link>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => blacklistMutation.mutate(position.symbol)}
+              disabled={blacklistMutation.isPending}
+            >
+              {blacklistMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Ban className="h-4 w-4 mr-2" />
+              )}
+              Blacklist
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={getStatusColor(position.status) as 'default' | 'secondary' | 'destructive' | 'outline'}>
-            {position.status}
-          </Badge>
-          <Badge variant={getHealthColor(position.health_status) as 'default' | 'secondary' | 'destructive' | 'outline'}>
-            {position.health_status}
-          </Badge>
+
+        {/* KPI Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          {/* Capital Allocated */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium text-muted-foreground">Capital Deployed</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Total capital allocated to this position
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    ${position.total_capital_deployed.toLocaleString()}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                  <DollarSign className="h-5 w-5 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Net Funding P&L */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium text-muted-foreground">Net Funding P&L</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Total funding payments received minus paid
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className={cn(
+                    'text-2xl font-bold',
+                    position.net_funding_pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                  )}>
+                    ${position.net_funding_pnl.toFixed(2)}
+                  </p>
+                </div>
+                <div className={cn(
+                  'h-10 w-10 rounded-full flex items-center justify-center',
+                  position.net_funding_pnl >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'
+                )}>
+                  <Activity className={cn(
+                    'h-5 w-5',
+                    position.net_funding_pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                  )} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Unrealized P&L */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium text-muted-foreground">Unrealized P&L</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Current profit/loss from price movements
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className={cn(
+                    'text-2xl font-bold',
+                    position.unrealized_pnl >= 0 ? 'text-green-500' : 'text-red-500'
+                  )}>
+                    ${position.unrealized_pnl.toFixed(2)}
+                  </p>
+                </div>
+                <div className={cn(
+                  'h-10 w-10 rounded-full flex items-center justify-center',
+                  position.unrealized_pnl >= 0 ? 'bg-green-500/10' : 'bg-red-500/10'
+                )}>
+                  {position.unrealized_pnl >= 0 ? (
+                    <TrendingUp className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <TrendingDown className="h-5 w-5 text-red-500" />
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Hold Duration */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-1">
+                    <p className="text-sm font-medium text-muted-foreground">Hold Duration</p>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Time since position was opened ({position.funding_periods_collected} funding periods)
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <p className="text-2xl font-bold">
+                    {formatDuration(holdDuration)}
+                  </p>
+                </div>
+                <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-purple-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
 
       {/* Spread Chart */}
       <PositionSpreadChart positionId={positionId} />
@@ -327,6 +583,7 @@ export default function PositionDetailPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

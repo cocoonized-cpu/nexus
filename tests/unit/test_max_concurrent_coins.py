@@ -1,4 +1,8 @@
-"""Unit tests for Max Concurrent Coins feature."""
+"""Unit tests for Max Concurrent Coins feature.
+
+NOTE: These tests require running with the capital-allocator service in PYTHONPATH.
+Run with: PYTHONPATH=services/capital-allocator pytest tests/unit/test_max_concurrent_coins.py
+"""
 
 import os
 import sys
@@ -9,12 +13,18 @@ from uuid import uuid4
 
 import pytest
 
-# Add service path for imports
-sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "../../services/capital-allocator")
+# Add service path for imports - use absolute path
+_service_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../services/capital-allocator")
 )
+if _service_path not in sys.path:
+    sys.path.insert(0, _service_path)
 
-from src.allocator.core import Allocation, AllocationStatus, CapitalAllocator
+# Handle namespace collision with other services' src packages
+try:
+    from src.allocator.core import Allocation, AllocationStatus, CapitalAllocator
+except ImportError:
+    pytest.skip("Cannot import CapitalAllocator - run with single service PYTHONPATH", allow_module_level=True)
 
 
 class TestCoinCounting:

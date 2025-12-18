@@ -838,6 +838,149 @@ async def get_position_spread_history(
     )
 
 
+# ============================================================================
+# Position Interactions API (bot decision timeline)
+# ============================================================================
+
+
+class PositionInteractionResponse(BaseModel):
+    """Response model for position interaction."""
+
+    id: UUID
+    position_id: UUID
+    opportunity_id: Optional[UUID]
+    symbol: str
+    timestamp: datetime
+    interaction_type: str
+    worker_service: str
+    decision: Optional[str]
+    narrative: str
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    correlation_id: Optional[UUID]
+
+
+class PositionInteractionListResponse(BaseModel):
+    """Response model for position interaction list."""
+
+    success: bool = True
+    data: list[PositionInteractionResponse]
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get("/{position_id}/interactions", response_model=PositionInteractionListResponse)
+async def get_position_interactions(
+    position_id: UUID,
+    interaction_type: Optional[str] = Query(None, description="Filter by interaction type"),
+    decision: Optional[str] = Query(None, description="Filter by decision"),
+    limit: int = Query(100, description="Number of interactions to return", le=500),
+    offset: int = Query(0, description="Offset for pagination"),
+    db: AsyncSession = Depends(get_db),
+) -> PositionInteractionListResponse:
+    """
+    Get the interaction timeline for a position.
+
+    This shows every decision the bot made about this position, including:
+    - Position opened/closed events
+    - Health checks and health changes
+    - Funding collection events
+    - Rebalancing decisions
+    - Exit triggers
+
+    Each interaction includes a human-readable narrative explaining what happened.
+    """
+    from sqlalchemy import text
+
+    # First verify the position exists
+    pos_check = await db.execute(
+        text("SELECT id, symbol FROM positions.active WHERE id = :id"),
+        {"id": str(position_id)},
+    )
+    pos_row = pos_check.fetchone()
+
+    if not pos_row:
+        raise HTTPException(status_code=404, detail="Position not found")
+
+    # Build query for interactions
+    query = """
+        SELECT
+            id, position_id, opportunity_id, symbol, timestamp,
+            interaction_type, worker_service, decision, narrative,
+            metrics, correlation_id
+        FROM positions.interactions
+        WHERE position_id = :position_id
+    """
+    params: dict[str, Any] = {
+        "position_id": str(position_id),
+        "limit": limit,
+        "offset": offset,
+    }
+
+    if interaction_type:
+        query += " AND interaction_type = :interaction_type"
+        params["interaction_type"] = interaction_type
+
+    if decision:
+        query += " AND decision = :decision"
+        params["decision"] = decision
+
+    query += " ORDER BY timestamp DESC LIMIT :limit OFFSET :offset"
+
+    result = await db.execute(text(query), params)
+    rows = result.fetchall()
+
+    interactions = []
+    for row in rows:
+        # Parse metrics JSONB
+        metrics_data = row[9] if row[9] else {}
+        if isinstance(metrics_data, str):
+            try:
+                import json
+                metrics_data = json.loads(metrics_data)
+            except Exception:
+                metrics_data = {}
+
+        interactions.append(
+            PositionInteractionResponse(
+                id=row[0],
+                position_id=row[1],
+                opportunity_id=row[2],
+                symbol=row[3],
+                timestamp=row[4],
+                interaction_type=row[5],
+                worker_service=row[6],
+                decision=row[7],
+                narrative=row[8],
+                metrics=metrics_data,
+                correlation_id=row[10],
+            )
+        )
+
+    # Get total count for pagination
+    count_query = """
+        SELECT COUNT(*) FROM positions.interactions WHERE position_id = :position_id
+    """
+    if interaction_type:
+        count_query += " AND interaction_type = :interaction_type"
+    if decision:
+        count_query += " AND decision = :decision"
+
+    count_result = await db.execute(text(count_query), params)
+    total_count = count_result.scalar() or 0
+
+    return PositionInteractionListResponse(
+        data=interactions,
+        meta={
+            "position_id": str(position_id),
+            "symbol": pos_row[1],
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + len(interactions)) < total_count,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
 @router.get("/{position_id}", response_model=PositionDetailResponse)
 async def get_position(
     position_id: UUID,

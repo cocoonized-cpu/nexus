@@ -3,10 +3,12 @@ API routers for NEXUS Gateway.
 """
 
 from src.api.analytics import router as analytics_router
+from src.api.blacklist import router as blacklist_router
 from src.api.capital import router as capital_router
 from src.api.config import router as config_router
 from src.api.funding import router as funding_router
 from src.api.health import router as health_router
+from src.api.logs import router as logs_router
 from src.api.opportunities import router as opportunities_router
 from src.api.positions import router as positions_router
 from src.api.risk import router as risk_router
@@ -22,4 +24,6 @@ __all__ = [
     "analytics_router",
     "system_router",
     "funding_router",
+    "blacklist_router",
+    "logs_router",
 ]

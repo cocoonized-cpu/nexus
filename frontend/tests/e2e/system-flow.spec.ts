@@ -382,9 +382,10 @@ test.describe('Opportunity Execution Flow', () => {
       await executeButtons.first().click();
       await page.waitForTimeout(500);
 
-      // Should see execution dialog or progress modal
-      const dialog = page.getByRole('dialog').or(page.getByText('Execute Opportunity'));
-      await expect(dialog).toBeVisible({ timeout: 5000 });
+      // Should see execution dialog or progress modal - use first() to avoid strict mode violation
+      const dialogVisible = await page.getByRole('dialog').first().isVisible();
+      const headingVisible = await page.getByRole('heading', { name: 'Execute Opportunity' }).isVisible();
+      expect(dialogVisible || headingVisible).toBe(true);
     }
   });
 });

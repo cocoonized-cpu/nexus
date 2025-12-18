@@ -47,6 +47,32 @@ from shared.utils.system_state import SystemStateManager
 logger = get_logger(__name__)
 
 
+# Interaction types for position timeline
+class InteractionType:
+    POSITION_OPENED = "position_opened"
+    HEALTH_CHECK = "health_check"
+    HEALTH_CHANGED = "health_changed"
+    FUNDING_CHECK = "funding_check"
+    FUNDING_COLLECTED = "funding_collected"
+    SPREAD_UPDATE = "spread_update"
+    REBALANCE_CHECK = "rebalance_check"
+    REBALANCE_TRIGGERED = "rebalance_triggered"
+    EXIT_EVALUATION = "exit_evaluation"
+    EXIT_TRIGGERED = "exit_triggered"
+    POSITION_CLOSED = "position_closed"
+
+
+# Decision types for interactions
+class InteractionDecision:
+    KEPT_OPEN = "kept_open"
+    TRIGGERED_EXIT = "triggered_exit"
+    REBALANCED = "rebalanced"
+    SKIPPED = "skipped"
+    ESCALATED = "escalated"
+    DEGRADED = "degraded"
+    RECOVERED = "recovered"
+
+
 class PositionStatus(str, Enum):
     OPENING = "opening"
     ACTIVE = "active"
@@ -411,6 +437,24 @@ class PositionManager:
         # Cache active positions
         await self._cache_active_positions()
 
+        # Log interaction for timeline
+        initial_spread_str = f"{float(position.initial_spread)*100:.4f}%" if position.initial_spread else "unknown"
+        await self._log_interaction(
+            position,
+            InteractionType.POSITION_OPENED,
+            None,
+            f"Position opened with ${float(position.size_usd):,.0f} capital. "
+            f"Long on {position.long_exchange}, short on {position.short_exchange}. "
+            f"Initial funding spread: {initial_spread_str}.",
+            {
+                "size_usd": float(position.size_usd),
+                "long_exchange": position.long_exchange,
+                "short_exchange": position.short_exchange,
+                "initial_spread": float(position.initial_spread) if position.initial_spread else None,
+                "entry_costs": float(position.entry_costs),
+            },
+        )
+
         # Publish activity
         await self._publish_activity(
             "position_opened",
@@ -459,6 +503,30 @@ class PositionManager:
         self._stats["positions_closed"] += 1
         self._stats["total_pnl"] += total_pnl
         self._stats["total_funding_collected"] += max(Decimal("0"), net_funding)
+
+        # Log interaction before removing position
+        hold_duration = (position.closed_at - position.opened_at).total_seconds() / 3600 if position.closed_at else 0
+        pnl_emoji = "✅" if total_pnl >= 0 else "❌"
+        await self._log_interaction(
+            position,
+            InteractionType.POSITION_CLOSED,
+            InteractionDecision.TRIGGERED_EXIT if position.exit_reason else None,
+            f"Position closed after {hold_duration:.1f} hours. "
+            f"Exit reason: {position.exit_reason or 'unknown'}. "
+            f"Final P&L: ${float(total_pnl):+.2f} ({pnl_emoji}). "
+            f"Net funding collected: ${float(net_funding):+.2f} over {position.funding_periods_collected} periods.",
+            {
+                "exit_reason": position.exit_reason,
+                "total_pnl": float(total_pnl),
+                "net_funding": float(net_funding),
+                "funding_received": float(position.funding_received),
+                "funding_paid": float(position.funding_paid),
+                "funding_periods": position.funding_periods_collected,
+                "hold_duration_hours": hold_duration,
+                "entry_costs": float(position.entry_costs),
+                "unrealized_pnl": float(position.unrealized_pnl),
+            },
+        )
 
         # Update position in database with closed status
         await self._close_position_in_db(position, total_pnl)
@@ -730,6 +798,61 @@ class PositionManager:
         if position.health == HealthStatus.CRITICAL:
             exit_reason = await self._get_exit_reason(position)
             await self._trigger_exit(position, exit_reason)
+        else:
+            # Log health check interaction when keeping position open
+            # Only log periodically (every 10th check) to avoid flooding, unless health changed
+            health_val = position.health.value if isinstance(position.health, HealthStatus) else position.health
+            old_health_val = old_health.value if isinstance(old_health, HealthStatus) else old_health
+
+            # Always log when health changes, otherwise log every ~5 minutes (10 checks at 30s interval)
+            should_log = old_health_val != health_val
+
+            if should_log:
+                spread_str = f"{float(position.current_spread)*100:.4f}%" if position.current_spread else "unknown"
+                trend_desc = {
+                    "rising": "improving",
+                    "falling": "declining",
+                    "stable": "stable",
+                }.get(position.spread_trend, "unknown")
+
+                if health_val == "healthy":
+                    narrative = (
+                        f"Health check: Position is healthy. "
+                        f"Funding spread at {spread_str} ({trend_desc}). "
+                        f"Keeping position open."
+                    )
+                elif health_val == "degraded":
+                    narrative = (
+                        f"Health check: Position is DEGRADED. "
+                        f"Funding spread at {spread_str} ({trend_desc}). "
+                        f"Monitoring closely for recovery or further deterioration."
+                    )
+                    if position.degraded_since:
+                        degraded_duration = (datetime.utcnow() - position.degraded_since).total_seconds()
+                        remaining = position.degraded_timeout_seconds - degraded_duration
+                        if remaining > 0:
+                            narrative += f" Will escalate to CRITICAL in {remaining/60:.0f} minutes if not recovered."
+                else:
+                    narrative = f"Health check: Position health is {health_val}."
+
+                await self._log_interaction(
+                    position,
+                    InteractionType.HEALTH_CHECK,
+                    InteractionDecision.KEPT_OPEN,
+                    narrative,
+                    {
+                        "health": health_val,
+                        "previous_health": old_health_val,
+                        "current_spread": float(position.current_spread) if position.current_spread else None,
+                        "initial_spread": float(position.initial_spread) if position.initial_spread else None,
+                        "spread_drawdown_pct": float(position.spread_drawdown_pct),
+                        "spread_trend": position.spread_trend,
+                        "long_funding_rate": float(position.long_funding_rate) if position.long_funding_rate else None,
+                        "short_funding_rate": float(position.short_funding_rate) if position.short_funding_rate else None,
+                        "delta_exposure_pct": float(position.delta_exposure_pct),
+                        "funding_periods": position.funding_periods_collected,
+                    },
+                )
 
     async def _update_position_funding_rates(self, position: Position) -> None:
         """Fetch current funding rates for position's exchanges."""
@@ -1030,6 +1153,23 @@ class PositionManager:
         """Trigger a rebalancing operation for the position."""
         position.last_rebalance_check = datetime.utcnow()
         position.rebalance_count += 1
+
+        # Log interaction for rebalancing
+        await self._log_interaction(
+            position,
+            InteractionType.REBALANCE_TRIGGERED,
+            InteractionDecision.REBALANCED,
+            f"⚖️ Rebalancing triggered (#{position.rebalance_count}). "
+            f"Leg drift of {float(position.leg_drift_pct):.2f}% exceeded {float(position.max_leg_drift_threshold):.1f}% threshold. "
+            f"Long and short legs will be adjusted to restore delta neutrality.",
+            {
+                "leg_drift_pct": float(position.leg_drift_pct),
+                "max_drift_threshold": float(position.max_leg_drift_threshold),
+                "rebalance_count": position.rebalance_count,
+                "delta_exposure_pct": float(position.delta_exposure_pct),
+                "price_correlation": float(position.price_correlation) if position.price_correlation else None,
+            },
+        )
 
         # Publish rebalancing request to execution engine
         rebalance_request = {
@@ -1431,6 +1571,40 @@ class PositionManager:
 
         position.status = PositionStatus.EXITING
 
+        # Map exit reasons to human-readable narratives
+        reason_narratives = {
+            "spread_flipped": "Funding spread has flipped negative - arbitrage is now costing money instead of earning.",
+            "stop_loss": f"Stop loss triggered - unrealized loss exceeded {float(position.stop_loss_pct)}% threshold.",
+            "max_hold_time": f"Maximum hold time reached - position has collected {position.funding_periods_collected} funding periods.",
+            "spread_below_threshold": f"Funding spread dropped below minimum threshold of {float(position.min_spread_threshold)*100:.2f}%.",
+            "delta_critical": f"Critical delta exposure of {float(position.delta_exposure_pct):.1f}% - hedges severely unbalanced.",
+            "liquidation_imminent": "Position is dangerously close to liquidation price.",
+            "spread_deterioration": f"Spread has deteriorated {float(position.spread_drawdown_pct):.1f}% from entry, exceeding {float(position.spread_drawdown_exit_pct):.0f}% threshold.",
+            "degraded_timeout": f"Position remained in DEGRADED state for over {position.degraded_timeout_seconds/60:.0f} minutes without recovery.",
+            "health_critical": "Position health is critical - immediate exit required.",
+            "manual": "Manual exit requested by user.",
+        }
+
+        detailed_narrative = reason_narratives.get(reason, f"Exit triggered: {reason}")
+        spread_str = f"{float(position.current_spread)*100:.4f}%" if position.current_spread else "unknown"
+
+        await self._log_interaction(
+            position,
+            InteractionType.EXIT_TRIGGERED,
+            InteractionDecision.TRIGGERED_EXIT,
+            f"🚨 EXIT TRIGGERED: {detailed_narrative} Current spread: {spread_str}.",
+            {
+                "exit_reason": reason,
+                "urgency": "immediate" if reason in ["stop_loss", "spread_flipped", "liquidation_imminent"] else "normal",
+                "current_spread": float(position.current_spread) if position.current_spread else None,
+                "initial_spread": float(position.initial_spread) if position.initial_spread else None,
+                "spread_drawdown_pct": float(position.spread_drawdown_pct),
+                "unrealized_pnl": float(position.unrealized_pnl),
+                "funding_collected": float(position.funding_received - position.funding_paid),
+                "delta_exposure_pct": float(position.delta_exposure_pct),
+            },
+        )
+
         # Publish exit triggered event
         event = PositionExitTriggeredEvent(
             position_id=position.id,
@@ -1545,6 +1719,28 @@ class PositionManager:
 
             # Persist funding payment to database
             await self._persist_funding_payment(position, total_funding)
+
+            # Log interaction for significant funding events
+            net_funding = position.funding_received - position.funding_paid
+            funding_emoji = "💰" if total_funding > 0 else "💸"
+            await self._log_interaction(
+                position,
+                InteractionType.FUNDING_COLLECTED,
+                InteractionDecision.KEPT_OPEN,
+                f"{funding_emoji} Funding payment: ${float(total_funding):+.2f}. "
+                f"Total funding collected: ${float(net_funding):+.2f} over {position.funding_periods_collected} periods. "
+                f"Long rate: {float(position.long_funding_rate)*100:.4f}%, Short rate: {float(position.short_funding_rate)*100:.4f}%.",
+                {
+                    "payment_amount": float(total_funding),
+                    "total_funding_received": float(position.funding_received),
+                    "total_funding_paid": float(position.funding_paid),
+                    "net_funding": float(net_funding),
+                    "funding_periods": position.funding_periods_collected,
+                    "long_funding_rate": float(position.long_funding_rate) if position.long_funding_rate else None,
+                    "short_funding_rate": float(position.short_funding_rate) if position.short_funding_rate else None,
+                    "current_spread": float(position.current_spread) if position.current_spread else None,
+                },
+            )
 
         # Update position P&L in database periodically
         await self._update_position_pnl_in_db(position)
@@ -1936,6 +2132,81 @@ class PositionManager:
             "timestamp": datetime.utcnow().isoformat(),
         }
         await self.redis.publish("nexus:activity", json.dumps(activity))
+
+    # ==================== Position Interaction Logging ====================
+
+    async def _log_interaction(
+        self,
+        position: Position,
+        interaction_type: str,
+        decision: Optional[str],
+        narrative: str,
+        metrics: Optional[dict[str, Any]] = None,
+        correlation_id: Optional[str] = None,
+    ) -> None:
+        """
+        Log an interaction with a position to the database for timeline tracking.
+
+        This creates a permanent record of every decision made about the position,
+        enabling users to understand why the bot took (or didn't take) actions.
+
+        Args:
+            position: The position being interacted with
+            interaction_type: Type of interaction (from InteractionType)
+            decision: Decision made (from InteractionDecision), or None if informational
+            narrative: Human-readable explanation of what happened and why
+            metrics: Optional dict of relevant metrics at the time of interaction
+            correlation_id: Optional UUID to correlate related interactions
+        """
+        try:
+            async with self._db_session_factory() as db:
+                await db.execute(
+                    text("""
+                        INSERT INTO positions.interactions (
+                            position_id,
+                            opportunity_id,
+                            symbol,
+                            timestamp,
+                            interaction_type,
+                            worker_service,
+                            decision,
+                            narrative,
+                            metrics,
+                            correlation_id
+                        ) VALUES (
+                            :position_id,
+                            :opportunity_id,
+                            :symbol,
+                            NOW(),
+                            :interaction_type,
+                            'position-manager',
+                            :decision,
+                            :narrative,
+                            :metrics::jsonb,
+                            :correlation_id
+                        )
+                    """),
+                    {
+                        "position_id": position.id,
+                        "opportunity_id": position.opportunity_id if position.opportunity_id else None,
+                        "symbol": position.symbol,
+                        "interaction_type": interaction_type,
+                        "decision": decision,
+                        "narrative": narrative,
+                        "metrics": json.dumps(metrics or {}),
+                        "correlation_id": correlation_id,
+                    },
+                )
+                await db.commit()
+
+        except Exception as e:
+            # Don't fail the main operation if interaction logging fails
+            logger.warning(
+                "Failed to log position interaction",
+                position_id=position.id,
+                interaction_type=interaction_type,
+                error=str(e),
+            )
 
     # ==================== Public Methods ====================
 

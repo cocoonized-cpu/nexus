@@ -1,4 +1,8 @@
-"""Unit tests for Spread Forecaster module."""
+"""Unit tests for Spread Forecaster module.
+
+NOTE: These tests require running with the opportunity-detector service in PYTHONPATH.
+Run with: PYTHONPATH=services/opportunity-detector pytest tests/unit/test_forecaster.py
+"""
 
 import os
 import sys
@@ -6,19 +10,25 @@ from datetime import datetime, timedelta
 
 import pytest
 
-# Add service path for imports
-sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "../../services/opportunity-detector")
+# Add service path for imports - use absolute path
+_service_path = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../services/opportunity-detector")
 )
+if _service_path not in sys.path:
+    sys.path.insert(0, _service_path)
 
-from src.detector.forecaster import (
-    ForecastConfidence,
-    MeanReversionSignal,
-    SeasonalityAnalysis,
-    SeasonalityPattern,
-    SpreadForecast,
-    SpreadForecaster,
-)
+# Handle namespace collision with other services' src packages
+try:
+    from src.detector.forecaster import (
+        ForecastConfidence,
+        MeanReversionSignal,
+        SeasonalityAnalysis,
+        SeasonalityPattern,
+        SpreadForecast,
+        SpreadForecaster,
+    )
+except ImportError:
+    pytest.skip("Cannot import forecaster - run with single service PYTHONPATH", allow_module_level=True)
 
 
 class TestSpreadForecaster:

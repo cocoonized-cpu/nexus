@@ -205,12 +205,12 @@ test.describe('Opportunity Actions', () => {
       await executeButtons.first().click();
       await page.waitForTimeout(500);
 
-      // Verify the execution progress modal appears
-      const dialogTitle = page.getByText('Execute Opportunity');
-      const executionProgress = page.getByText('Execution Progress');
+      // Should see either the dialog heading or the progress modal
+      // Use first() to avoid strict mode violations when multiple elements match
+      const dialogVisible = await page.getByRole('heading', { name: 'Execute Opportunity' }).isVisible();
+      const progressVisible = await page.getByText('Execution Progress').first().isVisible();
 
-      // Should see either the dialog or the progress modal
-      await expect(dialogTitle.or(executionProgress)).toBeVisible({ timeout: 3000 });
+      expect(dialogVisible || progressVisible).toBe(true);
     }
   });
 

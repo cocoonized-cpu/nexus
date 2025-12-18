@@ -225,8 +225,9 @@ test.describe('User Journey Tests', () => {
       // Verify positions page loads
       await expect(page.getByRole('heading', { name: 'Positions & Trades' })).toBeVisible();
 
-      // Check tab filters exist
-      await expect(page.getByRole('tab', { name: /open positions/i })).toBeVisible();
+      // Check tab filters exist - Tab structure: NEXUS Positions, Exchange, Trade History
+      await expect(page.getByRole('tab', { name: /nexus positions/i })).toBeVisible();
+      await expect(page.getByRole('tab', { name: /exchange/i })).toBeVisible();
       await expect(page.getByRole('tab', { name: /trade history/i })).toBeVisible();
 
       // Check summary stats
@@ -237,7 +238,7 @@ test.describe('User Journey Tests', () => {
       await page.getByRole('tab', { name: /trade history/i }).click();
       await page.waitForTimeout(300);
 
-      await page.getByRole('tab', { name: /open positions/i }).click();
+      await page.getByRole('tab', { name: /nexus positions/i }).click();
       await page.waitForTimeout(300);
     });
   });

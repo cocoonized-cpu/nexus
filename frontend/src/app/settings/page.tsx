@@ -35,6 +35,7 @@ import {
   MaxConcurrentCoinsSettings,
 } from '@/lib/api';
 import { formatCurrency, formatPercent } from '@/lib/utils';
+import { useToast } from '@/components/ui/use-toast';
 import {
   Settings,
   Key,
@@ -47,6 +48,8 @@ import {
   EyeOff,
   Save,
   Loader2,
+  Cog,
+  AlertCircle,
 } from 'lucide-react';
 
 interface Exchange {
@@ -126,6 +129,7 @@ interface ExchangeCredentials {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [selectedExchange, setSelectedExchange] = useState<Exchange | null>(null);
   const [showCredentialDialog, setShowCredentialDialog] = useState(false);
   const [credentials, setCredentials] = useState<ExchangeCredentials>({
@@ -143,6 +147,7 @@ export default function SettingsPage() {
   const [hasSpreadMonitoringChanges, setHasSpreadMonitoringChanges] = useState(false);
   const [maxCoinsValue, setMaxCoinsValue] = useState<number | null>(null);
   const [hasMaxCoinsChanges, setHasMaxCoinsChanges] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   // Queries
   const { data: exchangesData, isLoading: exchangesLoading } = useQuery({
@@ -216,18 +221,40 @@ export default function SettingsPage() {
   const updateExchangeMutation = useMutation({
     mutationFn: ({ slug, data }: { slug: string; data: Record<string, unknown> }) =>
       updateExchange(slug, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['exchanges'] });
       setShowCredentialDialog(false);
       setCredentials({ api_key: '', api_secret: '', passphrase: '', wallet_address: '' });
+      toast({
+        title: 'Exchange Updated',
+        description: `${variables.slug} configuration saved successfully.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Failed to update exchange settings.',
+        variant: 'destructive',
+      });
     },
   });
 
   const updateSettingMutation = useMutation({
     mutationFn: ({ key, value }: { key: string; value: unknown }) =>
       updateSetting(key, value),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast({
+        title: 'Setting Updated',
+        description: `${variables.key.replace(/_/g, ' ')} has been updated.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Failed to update setting.',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -237,6 +264,17 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['risk-limits'] });
       setRiskLimitChanges({});
       setHasRiskChanges(false);
+      toast({
+        title: 'Risk Limits Updated',
+        description: 'Risk limit changes saved successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Failed to update risk limits.',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -246,6 +284,17 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['strategy-params'] });
       setStrategyChanges({});
       setHasStrategyChanges(false);
+      toast({
+        title: 'Strategy Updated',
+        description: 'Strategy parameters saved successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Failed to update strategy parameters.',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -255,6 +304,17 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['spread-monitoring-settings'] });
       setSpreadMonitoringChanges({});
       setHasSpreadMonitoringChanges(false);
+      toast({
+        title: 'Spread Monitoring Updated',
+        description: 'Spread monitoring settings saved successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Failed to update spread monitoring settings.',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -264,6 +324,17 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['max-concurrent-coins'] });
       setMaxCoinsValue(null);
       setHasMaxCoinsChanges(false);
+      toast({
+        title: 'Position Limit Updated',
+        description: 'Maximum concurrent coins setting saved successfully.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Update Failed',
+        description: error.message || 'Failed to update position limit.',
+        variant: 'destructive',
+      });
     },
   });
 
@@ -415,7 +486,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="exchanges" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="exchanges" className="flex items-center gap-2">
               <Key className="h-4 w-4" />
               Exchanges
@@ -431,6 +502,10 @@ export default function SettingsPage() {
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
               Notifications
+            </TabsTrigger>
+            <TabsTrigger value="system" className="flex items-center gap-2">
+              <Cog className="h-4 w-4" />
+              System
             </TabsTrigger>
           </TabsList>
 
@@ -996,6 +1071,172 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* System Tab */}
+          <TabsContent value="system">
+            <div className="grid gap-6">
+              {/* Feature Status */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Feature Status</CardTitle>
+                  <CardDescription>
+                    Implementation status of NEXUS features
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Funding Rate Collection</div>
+                      <div className="text-sm text-muted-foreground">
+                        Dual-source funding rate aggregation
+                      </div>
+                    </div>
+                    <Badge variant="default" className="bg-green-500">Implemented</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Opportunity Detection</div>
+                      <div className="text-sm text-muted-foreground">
+                        UOS-based arbitrage opportunity scoring
+                      </div>
+                    </div>
+                    <Badge variant="default" className="bg-green-500">Implemented</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Position Management</div>
+                      <div className="text-sm text-muted-foreground">
+                        Automated position monitoring and exit triggers
+                      </div>
+                    </div>
+                    <Badge variant="default" className="bg-green-500">Implemented</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Auto-Execution</div>
+                      <div className="text-sm text-muted-foreground">
+                        Automatic trade execution based on UOS score
+                      </div>
+                    </div>
+                    <Badge variant="default" className="bg-green-500">Implemented</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Backtesting Engine</div>
+                      <div className="text-sm text-muted-foreground">
+                        Historical strategy simulation
+                      </div>
+                    </div>
+                    <Badge variant="secondary">Not Implemented</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Paper Trading Mode</div>
+                      <div className="text-sm text-muted-foreground">
+                        Simulated trading without real capital
+                      </div>
+                    </div>
+                    <Badge variant="secondary">Not Implemented</Badge>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium">Multi-User Support</div>
+                      <div className="text-sm text-muted-foreground">
+                        Multiple user accounts with permissions
+                      </div>
+                    </div>
+                    <Badge variant="secondary">Not Implemented</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* System Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>System Information</CardTitle>
+                  <CardDescription>
+                    Version and configuration details
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1">
+                      <div className="text-sm text-muted-foreground">Version</div>
+                      <div className="font-medium">0.1.0-dev</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm text-muted-foreground">Environment</div>
+                      <div className="font-medium">Development</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm text-muted-foreground">Database</div>
+                      <div className="font-medium">PostgreSQL</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm text-muted-foreground">Message Broker</div>
+                      <div className="font-medium">Redis Pub/Sub</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Danger Zone */}
+              <Card className="border-destructive/50">
+                <CardHeader>
+                  <CardTitle className="text-destructive flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" />
+                    Danger Zone
+                  </CardTitle>
+                  <CardDescription>
+                    Irreversible actions - use with caution
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border border-destructive/50 rounded-lg">
+                    <div>
+                      <div className="font-medium">Reset All Positions</div>
+                      <div className="text-sm text-muted-foreground">
+                        Mark all positions as closed. Use for recovery scenarios.
+                      </div>
+                    </div>
+                    <Button variant="destructive" disabled>
+                      Reset Positions
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border border-destructive/50 rounded-lg">
+                    <div>
+                      <div className="font-medium">Clear Symbol Blacklist</div>
+                      <div className="text-sm text-muted-foreground">
+                        Remove all entries from the symbol blacklist
+                      </div>
+                    </div>
+                    <Button variant="destructive" disabled>
+                      Clear Blacklist
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border border-destructive/50 rounded-lg">
+                    <div>
+                      <div className="font-medium">Factory Reset</div>
+                      <div className="text-sm text-muted-foreground">
+                        Reset all settings to defaults (credentials preserved)
+                      </div>
+                    </div>
+                    <Button variant="destructive" disabled>
+                      Factory Reset
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
 

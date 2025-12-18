@@ -50,7 +50,9 @@ test.describe('Positions Tab Filtering', () => {
   });
 
   test('should display filter tabs', async ({ page }) => {
-    await expect(page.getByRole('tab', { name: /open positions/i })).toBeVisible();
+    // Tab structure: NEXUS Positions, Exchange, Trade History
+    await expect(page.getByRole('tab', { name: /nexus positions/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /exchange/i })).toBeVisible();
     await expect(page.getByRole('tab', { name: /trade history/i })).toBeVisible();
   });
 
@@ -60,15 +62,15 @@ test.describe('Positions Tab Filtering', () => {
     await expect(page.getByRole('tab', { name: /trade history/i })).toHaveAttribute('data-state', 'active');
   });
 
-  test('should switch back to Open Positions tab', async ({ page }) => {
+  test('should switch back to Exchange tab', async ({ page }) => {
     // First switch to history tab
     await page.getByRole('tab', { name: /trade history/i }).click();
     await page.waitForTimeout(300);
 
-    // Then switch back to open positions
-    await page.getByRole('tab', { name: /open positions/i }).click();
+    // Then switch to Exchange tab
+    await page.getByRole('tab', { name: /exchange/i }).click();
     await page.waitForTimeout(300);
-    await expect(page.getByRole('tab', { name: /open positions/i })).toHaveAttribute('data-state', 'active');
+    await expect(page.getByRole('tab', { name: /exchange/i })).toHaveAttribute('data-state', 'active');
   });
 
   test('should display filter dropdowns', async ({ page }) => {
@@ -172,8 +174,8 @@ test.describe('NEXUS Consolidated Positions', () => {
   });
 
   test('should display summary statistics', async ({ page }) => {
-    // Position count
-    await expect(page.getByText('Positions')).toBeVisible();
+    // Position count - use more specific selector since "Positions" appears multiple times
+    await expect(page.getByLabel('NEXUS Positions').getByText('Positions', { exact: true })).toBeVisible();
     // Total Capital
     await expect(page.getByText('Total Capital')).toBeVisible();
     // Funding P&L

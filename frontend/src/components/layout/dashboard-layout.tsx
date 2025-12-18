@@ -15,7 +15,6 @@ import {
   PieChart,
   LineChart,
   HelpCircle,
-  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -28,7 +27,6 @@ const navigation = [
   { name: 'Opportunities', href: '/opportunities', icon: TrendingUp },
   { name: 'Positions', href: '/positions', icon: Wallet },
   { name: 'Performance', href: '/performance', icon: PieChart },
-  { name: 'Risk', href: '/risk', icon: Shield },
   { name: 'Settings', href: '/settings', icon: Settings },
   { name: 'Help', href: '/help', icon: HelpCircle },
 ];

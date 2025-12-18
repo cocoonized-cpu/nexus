@@ -3,6 +3,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   TrendingUp,
   TrendingDown,
   DollarSign,
@@ -10,10 +16,12 @@ import {
   Calendar,
   Activity,
   Loader2,
+  HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getRealtimePnL } from '@/lib/api';
 import { formatCurrency, formatPercent } from '@/lib/utils';
+import { getKPIById } from '@/lib/kpi-definitions';
 
 interface RealtimePnL {
   total_pnl: number;
@@ -52,6 +60,7 @@ export function PnLInsights({ className }: PnLInsightsProps) {
       format: 'currency' as const,
       icon: DollarSign,
       description: 'All-time profit/loss',
+      kpiId: 'total_pnl',
     },
     {
       title: "Today's P&L",
@@ -59,6 +68,7 @@ export function PnLInsights({ className }: PnLInsightsProps) {
       format: 'currency' as const,
       icon: Calendar,
       description: '24h change',
+      kpiId: 'funding_today',
     },
     {
       title: 'Unrealized P&L',
@@ -66,6 +76,7 @@ export function PnLInsights({ className }: PnLInsightsProps) {
       format: 'currency' as const,
       icon: Activity,
       description: 'Open positions',
+      kpiId: 'unrealized_pnl',
     },
     {
       title: 'ROI',
@@ -73,6 +84,7 @@ export function PnLInsights({ className }: PnLInsightsProps) {
       format: 'percent' as const,
       icon: Percent,
       description: 'Return on investment',
+      kpiId: 'roi',
     },
   ];
 
@@ -110,46 +122,74 @@ export function PnLInsights({ className }: PnLInsightsProps) {
   }
 
   return (
-    <div className={cn('grid gap-4 md:grid-cols-4', className)}>
-      {cards.map((card) => {
-        const isPositive = card.value >= 0;
-        const Icon = card.icon;
+    <TooltipProvider>
+      <div className={cn('grid gap-4 md:grid-cols-4', className)}>
+        {cards.map((card) => {
+          const isPositive = card.value >= 0;
+          const Icon = card.icon;
+          const kpiDef = getKPIById(card.kpiId);
 
-        return (
-          <Card key={card.title}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {card.title}
-                  </p>
-                  <p className={cn(
-                    'text-2xl font-bold',
-                    isPositive ? 'text-green-500' : 'text-red-500'
+          return (
+            <Card key={card.title}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {card.title}
+                      </p>
+                      {kpiDef && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground/60 cursor-help hover:text-muted-foreground transition-colors" />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-sm">
+                            <div className="space-y-2">
+                              <p className="font-semibold">{kpiDef.name}</p>
+                              <p className="text-sm">{kpiDef.description}</p>
+                              {kpiDef.formula && (
+                                <p className="text-xs text-muted-foreground">
+                                  <span className="font-medium">Formula:</span> {kpiDef.formula}
+                                </p>
+                              )}
+                              {kpiDef.range && (
+                                <p className="text-xs text-muted-foreground">
+                                  <span className="font-medium">Range:</span> {kpiDef.range}
+                                </p>
+                              )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <p className={cn(
+                      'text-2xl font-bold',
+                      isPositive ? 'text-green-500' : 'text-red-500'
+                    )}>
+                      {card.format === 'currency'
+                        ? formatCurrency(card.value)
+                        : formatPercent(card.value, 2)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {card.description}
+                    </p>
+                  </div>
+                  <div className={cn(
+                    'h-10 w-10 rounded-full flex items-center justify-center',
+                    isPositive ? 'bg-green-500/10' : 'bg-red-500/10'
                   )}>
-                    {card.format === 'currency'
-                      ? formatCurrency(card.value)
-                      : formatPercent(card.value, 2)}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {card.description}
-                  </p>
+                    {isPositive ? (
+                      <TrendingUp className={cn('h-5 w-5', isPositive ? 'text-green-500' : 'text-red-500')} />
+                    ) : (
+                      <TrendingDown className="h-5 w-5 text-red-500" />
+                    )}
+                  </div>
                 </div>
-                <div className={cn(
-                  'h-10 w-10 rounded-full flex items-center justify-center',
-                  isPositive ? 'bg-green-500/10' : 'bg-red-500/10'
-                )}>
-                  {isPositive ? (
-                    <TrendingUp className={cn('h-5 w-5', isPositive ? 'text-green-500' : 'text-red-500')} />
-                  ) : (
-                    <TrendingDown className="h-5 w-5 text-red-500" />
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
