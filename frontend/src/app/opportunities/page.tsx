@@ -500,6 +500,13 @@ export default function OpportunitiesPage() {
                         tooltip="Unified Opportunity Score (0-100). Combines return potential, risk metrics, execution feasibility, and timing factors. Higher is better."
                       />
                       <SortableTableHeader
+                        label="Bot Action"
+                        sortKey="bot_action"
+                        currentSort={sortConfig}
+                        onSort={handleSort}
+                        tooltip="What action the bot will take on this opportunity. Hover for detailed explanation of why the bot is or isn't trading this opportunity."
+                      />
+                      <SortableTableHeader
                         label="Status"
                         sortKey="status"
                         currentSort={sortConfig}
