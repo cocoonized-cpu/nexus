@@ -115,6 +115,18 @@ class OpportunityDetector:
         self._last_detection_time: Optional[datetime] = None
         self._detection_debounce_seconds = 5  # Skip detection if run within 5 seconds
 
+        # Bot action calculator (initialized after state manager is ready)
+        self._bot_action_calculator: Optional[BotActionCalculator] = None
+
+        # Allocation context cache (refreshed periodically)
+        self._allocation_context = {
+            "active_coins": 0,
+            "max_coins": 5,
+            "available_capital": 0,
+            "positions_by_symbol": set(),
+            "last_update": None,
+        }
+
     async def start(self) -> None:
         """Start the opportunity detector."""
         logger.info("Starting Opportunity Detector")
