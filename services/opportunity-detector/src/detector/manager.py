@@ -26,8 +26,9 @@ from src.detector.scorer import UOSScorer
 from shared.events.opportunity import (OpportunityDetectedEvent,
                                        OpportunityExpiredEvent,
                                        OpportunityUpdatedEvent)
-from shared.models.opportunity import Opportunity, OpportunityLeg, UOSScores
+from shared.models.opportunity import BotAction, Opportunity, OpportunityLeg, UOSScores
 from shared.utils.logging import get_logger
+from src.detector.bot_action import BotActionCalculator
 from shared.utils.redis_client import RedisClient
 from shared.utils.system_state import SystemStateManager
 
