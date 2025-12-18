@@ -841,14 +841,22 @@ class PositionManager:
                 else:
                     narrative = f"Health check: Position health is {health_val}."
 
+                # Use HEALTH_CHANGED type if health actually changed, otherwise HEALTH_CHECK
+                interaction_type = InteractionType.HEALTH_CHANGED if health_changed else InteractionType.HEALTH_CHECK
+                decision = InteractionDecision.RECOVERED if health_changed and health_val == "healthy" else (
+                    InteractionDecision.DEGRADED if health_changed and health_val == "degraded" else InteractionDecision.KEPT_OPEN
+                )
+
                 await self._log_interaction(
                     position,
-                    InteractionType.HEALTH_CHECK,
-                    InteractionDecision.KEPT_OPEN,
+                    interaction_type,
+                    decision,
                     narrative,
                     {
                         "health": health_val,
                         "previous_health": old_health_val,
+                        "health_changed": health_changed,
+                        "check_number": counter,
                         "current_spread": float(position.current_spread) if position.current_spread else None,
                         "initial_spread": float(position.initial_spread) if position.initial_spread else None,
                         "spread_drawdown_pct": float(position.spread_drawdown_pct),
