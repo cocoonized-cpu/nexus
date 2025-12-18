@@ -342,6 +342,12 @@ class HyperliquidClient:
 
             result = await self._post_exchange(action)
 
+            # Check for error response from improved _post_exchange
+            if result.get("status") == "error":
+                error_msg = result.get("error", "Unknown error")
+                logger.error("Hyperliquid order placement failed", error=error_msg)
+                return {"success": False, "error": error_msg}
+
             if result.get("status") == "ok":
                 response = result.get("response", {})
                 statuses = response.get("data", {}).get("statuses", [])
@@ -364,8 +370,14 @@ class HyperliquidClient:
                         "size": size,
                         "filled": True,
                     }
+                elif statuses and "error" in statuses[0]:
+                    # Handle order-level error in response
+                    error_msg = statuses[0].get("error", "Order rejected")
+                    return {"success": False, "error": error_msg}
 
-            return {"success": False, "error": result}
+            # Unknown response format
+            logger.warning("Unexpected Hyperliquid order response", result=result)
+            return {"success": False, "error": f"Unexpected response: {result}"}
 
         except Exception as e:
             logger.error("Failed to place Hyperliquid order", error=str(e))
