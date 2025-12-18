@@ -16,6 +16,7 @@ be shown in the UI for informational purposes.
 import asyncio
 import json
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Optional
 from uuid import uuid4
 
