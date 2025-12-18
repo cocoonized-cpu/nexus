@@ -2159,6 +2159,25 @@ class PositionManager:
             correlation_id: Optional UUID to correlate related interactions
         """
         try:
+            # Prepare parameters
+            params = {
+                "position_id": str(position.id),
+                "opportunity_id": str(position.opportunity_id) if position.opportunity_id else None,
+                "symbol": position.symbol,
+                "interaction_type": interaction_type,
+                "decision": decision,
+                "narrative": narrative,
+                "metrics": json.dumps(metrics or {}),
+                "correlation_id": str(correlation_id) if correlation_id else None,
+            }
+
+            logger.debug(
+                "Logging position interaction",
+                position_id=position.id,
+                interaction_type=interaction_type,
+                decision=decision,
+            )
+
             async with self._db_session_factory() as db:
                 await db.execute(
                     text("""
@@ -2174,8 +2193,8 @@ class PositionManager:
                             metrics,
                             correlation_id
                         ) VALUES (
-                            :position_id,
-                            :opportunity_id,
+                            CAST(:position_id AS UUID),
+                            CAST(:opportunity_id AS UUID),
                             :symbol,
                             NOW(),
                             :interaction_type,
@@ -2183,29 +2202,28 @@ class PositionManager:
                             :decision,
                             :narrative,
                             :metrics::jsonb,
-                            :correlation_id
+                            CAST(:correlation_id AS UUID)
                         )
                     """),
-                    {
-                        "position_id": position.id,
-                        "opportunity_id": position.opportunity_id if position.opportunity_id else None,
-                        "symbol": position.symbol,
-                        "interaction_type": interaction_type,
-                        "decision": decision,
-                        "narrative": narrative,
-                        "metrics": json.dumps(metrics or {}),
-                        "correlation_id": correlation_id,
-                    },
+                    params,
                 )
                 await db.commit()
 
+            logger.debug(
+                "Successfully logged position interaction",
+                position_id=position.id,
+                interaction_type=interaction_type,
+            )
+
         except Exception as e:
-            # Don't fail the main operation if interaction logging fails
-            logger.warning(
+            # Log with full traceback for debugging
+            import traceback
+            logger.error(
                 "Failed to log position interaction",
                 position_id=position.id,
                 interaction_type=interaction_type,
                 error=str(e),
+                traceback=traceback.format_exc(),
             )
 
     # ==================== Public Methods ====================
