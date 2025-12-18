@@ -660,7 +660,7 @@ async def run_stress_test(
 
     # Get total capital
     capital_query = """
-        SELECT COALESCE(SUM(available_balance), 0) as total_capital
+        SELECT COALESCE(SUM(total_usd), 0) as total_capital
         FROM capital.venue_balances
     """
     capital_result = await db.execute(text(capital_query))
