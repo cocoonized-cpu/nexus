@@ -61,7 +61,7 @@ import {
 import Link from 'next/link';
 
 // Sort key type for opportunities
-type OpportunitySortKey = 'symbol' | 'spread' | 'net_apr' | 'uos_score' | 'expires' | 'long_exchange' | 'short_exchange' | 'status';
+type OpportunitySortKey = 'symbol' | 'spread' | 'net_apr' | 'uos_score' | 'expires' | 'long_exchange' | 'short_exchange' | 'status' | 'bot_action';
 
 interface OpportunityLeg {
   exchange: string;
