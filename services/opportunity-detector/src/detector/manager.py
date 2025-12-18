@@ -1130,6 +1130,44 @@ class OpportunityDetector:
 
         return opportunities[:limit]
 
+    def get_opportunities_with_bot_action(
+        self,
+        min_score: int = 0,
+        symbol: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """
+        Get opportunities with bot_action calculated for each.
+
+        Returns a list of opportunity dicts with bot_action included.
+        """
+        from decimal import Decimal
+
+        opportunities = self.get_opportunities(min_score, symbol, limit)
+
+        results = []
+        for opp in opportunities:
+            opp_dict = opp.model_dump()
+
+            # Calculate bot action if calculator is available
+            if self._bot_action_calculator:
+                has_existing_position = opp.symbol.upper() in self._allocation_context.get("positions_by_symbol", set())
+
+                bot_action = self._bot_action_calculator.calculate(
+                    opportunity=opp,
+                    active_coins=self._allocation_context.get("active_coins", 0),
+                    max_coins=self._allocation_context.get("max_coins", 5),
+                    available_capital=Decimal(str(self._allocation_context.get("available_capital", 10000))),
+                    has_existing_position=has_existing_position,
+                )
+                opp_dict["bot_action"] = bot_action.model_dump()
+            else:
+                opp_dict["bot_action"] = None
+
+            results.append(opp_dict)
+
+        return results
+
     def get_top_opportunities(self, limit: int = 10) -> list[Opportunity]:
         """Get top opportunities by UOS score."""
         opportunities = sorted(
