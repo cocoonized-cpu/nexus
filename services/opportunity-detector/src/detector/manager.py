@@ -370,11 +370,10 @@ class OpportunityDetector:
                 max_coins_row = max_coins_result.fetchone()
                 max_coins = int(max_coins_row[0]) if max_coins_row else 5
 
-                # Get available capital (simplified - would normally query capital allocator)
+                # Get available capital from venue balances
                 capital_result = await db.execute(text("""
-                    SELECT COALESCE(SUM(available_balance_usd), 0)
-                    FROM capital.accounts
-                    WHERE is_active = true
+                    SELECT COALESCE(SUM(total_usd), 0)
+                    FROM capital.venue_balances
                 """))
                 capital_row = capital_result.fetchone()
                 available_capital = float(capital_row[0]) if capital_row and capital_row[0] else 10000.0
