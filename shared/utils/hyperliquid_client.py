@@ -601,3 +601,26 @@ class HyperliquidClient:
         except Exception as e:
             logger.warning("Failed to get Hyperliquid min order size", error=str(e))
             return None
+
+    async def is_symbol_valid(self, symbol: str) -> bool:
+        """Check if a symbol is valid and tradeable on Hyperliquid."""
+        coin = symbol.split("/")[0]
+
+        try:
+            if not self._meta:
+                self._meta = await self._post_info({"type": "meta"})
+
+            universe = self._meta.get("universe", [])
+
+            for asset in universe:
+                if asset["name"] == coin:
+                    # Check if the asset is not marked as inactive/delisted
+                    # Hyperliquid doesn't have an explicit status field,
+                    # but presence in universe means it's tradeable
+                    return True
+
+            return False
+
+        except Exception as e:
+            logger.warning("Failed to check Hyperliquid symbol validity", error=str(e))
+            return False
