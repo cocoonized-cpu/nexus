@@ -800,12 +800,18 @@ class PositionManager:
             await self._trigger_exit(position, exit_reason)
         else:
             # Log health check interaction when keeping position open
-            # Only log periodically (every 10th check) to avoid flooding, unless health changed
             health_val = position.health.value if isinstance(position.health, HealthStatus) else position.health
             old_health_val = old_health.value if isinstance(old_health, HealthStatus) else old_health
 
-            # Always log when health changes, otherwise log every ~5 minutes (10 checks at 30s interval)
-            should_log = old_health_val != health_val
+            # Track health check counter per position for periodic logging
+            if not hasattr(self, "_health_check_counter"):
+                self._health_check_counter = {}
+            counter = self._health_check_counter.get(position.id, 0) + 1
+            self._health_check_counter[position.id] = counter
+
+            # Log when: health changes, OR every 10 checks (~5 minutes at 30s interval)
+            health_changed = old_health_val != health_val
+            should_log = health_changed or (counter % 10 == 1)  # Log on first check and every 10th
 
             if should_log:
                 spread_str = f"{float(position.current_spread)*100:.4f}%" if position.current_spread else "unknown"
