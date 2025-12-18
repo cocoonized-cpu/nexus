@@ -95,10 +95,14 @@ class ExchangeClient:
         config: dict[str, Any] = {
             "enableRateLimit": True,
             "adjustForTimeDifference": True,  # Auto-sync with exchange server time
+            "recvWindow": 20000,  # Increase receive window to 20 seconds for all exchanges
             "options": {
                 "defaultType": "swap",  # Use perpetual/futures
                 "warnOnFetchOpenOrdersWithoutSymbol": False,  # Suppress warning for fetching all orders
-                "recvWindow": 10000,  # Increase receive window to 10 seconds (default is 5000ms)
+                "recvWindow": 20000,  # Also set in options for exchanges that read from there
+                "recv_window": 20000,  # Bybit uses recv_window
+                "timeDifference": 0,  # Will be updated by adjustForTimeDifference
+                "adjustForTimeDifference": True,
             },
         }
 
