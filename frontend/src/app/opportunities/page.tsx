@@ -467,7 +467,7 @@ export default function OpportunitiesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <TooltipProvider>
+                <TooltipProvider delayDuration={0}>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b text-left text-sm text-muted-foreground">
