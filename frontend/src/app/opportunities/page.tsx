@@ -110,6 +110,7 @@ interface Opportunity {
   short_leg?: OpportunityLeg;
   funding_spread_pct?: number;
   estimated_net_apr?: number;
+  bot_action?: BotAction;
 }
 
 // Helper to get UOS score from various sources
