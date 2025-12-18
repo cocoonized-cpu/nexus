@@ -345,6 +345,57 @@ class OpportunityDetector:
         """Check if a symbol is blacklisted."""
         return symbol.upper() in self._blacklisted_symbols
 
+    async def _refresh_allocation_context(self) -> None:
+        """Refresh allocation context from database (active positions, capital, etc.)."""
+        if not self.db_session_factory:
+            return
+
+        try:
+            from decimal import Decimal
+
+            async with self.db_session_factory() as db:
+                # Get active positions and their symbols
+                positions_result = await db.execute(text("""
+                    SELECT DISTINCT symbol FROM positions.active
+                    WHERE status = 'active'
+                """))
+                active_symbols = {row[0] for row in positions_result.fetchall()}
+
+                # Get max concurrent coins setting
+                max_coins_result = await db.execute(text("""
+                    SELECT value FROM config.system_settings
+                    WHERE key = 'max_concurrent_coins'
+                """))
+                max_coins_row = max_coins_result.fetchone()
+                max_coins = int(max_coins_row[0]) if max_coins_row else 5
+
+                # Get available capital (simplified - would normally query capital allocator)
+                capital_result = await db.execute(text("""
+                    SELECT COALESCE(SUM(available_balance_usd), 0)
+                    FROM capital.accounts
+                    WHERE is_active = true
+                """))
+                capital_row = capital_result.fetchone()
+                available_capital = float(capital_row[0]) if capital_row and capital_row[0] else 10000.0
+
+                self._allocation_context = {
+                    "active_coins": len(active_symbols),
+                    "max_coins": max_coins,
+                    "available_capital": available_capital,
+                    "positions_by_symbol": active_symbols,
+                    "last_update": datetime.utcnow(),
+                }
+
+                logger.debug(
+                    "Refreshed allocation context",
+                    active_coins=len(active_symbols),
+                    max_coins=max_coins,
+                    available_capital=available_capital,
+                )
+
+        except Exception as e:
+            logger.warning("Failed to refresh allocation context", error=str(e))
+
     async def _refresh_exchange_credentials(self) -> None:
         """Periodically refresh the list of exchanges with credentials."""
         while self._running:
