@@ -93,8 +93,9 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
         </Badge>
       </HoverCardTrigger>
       <HoverCardContent
-        side="left"
-        sideOffset={8}
+        side="bottom"
+        align="start"
+        sideOffset={4}
         className="w-[380px] max-w-md p-0 z-[9999]"
         data-testid="bot-action-tooltip"
       >
