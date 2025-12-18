@@ -522,6 +522,65 @@ class ExchangeClient:
             logger.warning(f"Failed to get min order size from {self.slug}", error=str(e))
             return None
 
+    async def is_symbol_tradeable(self, symbol: str) -> tuple[bool, str]:
+        """
+        Check if a symbol is tradeable on this exchange.
+
+        Returns:
+            Tuple of (is_tradeable, reason_if_not)
+        """
+        try:
+            if self.api_type == "ccxt":
+                if not self._client:
+                    return False, "Not connected to exchange"
+
+                # Normalize symbol to CCXT format
+                ccxt_symbol = self._normalize_symbol_for_ccxt(symbol)
+
+                # Load markets if not loaded
+                if not self._client.markets:
+                    await self._client.load_markets()
+
+                # Check if symbol exists
+                if ccxt_symbol not in self._client.markets:
+                    return False, f"Symbol {ccxt_symbol} not found on {self.slug}"
+
+                market = self._client.markets[ccxt_symbol]
+
+                # Check if market is active
+                if not market.get("active", True):
+                    return False, f"Symbol {ccxt_symbol} is not active on {self.slug}"
+
+                # Check market info for specific status flags
+                info = market.get("info", {})
+
+                # Binance specific checks
+                if "binance" in self.slug.lower():
+                    status = info.get("status") or info.get("contractStatus")
+                    if status and status.upper() not in ["TRADING", "NORMAL"]:
+                        return False, f"Symbol {ccxt_symbol} status is {status} on {self.slug}"
+
+                # Bybit specific checks
+                if "bybit" in self.slug.lower():
+                    status = info.get("status")
+                    if status and status.upper() != "TRADING":
+                        return False, f"Symbol {ccxt_symbol} status is {status} on {self.slug}"
+
+                return True, ""
+
+            elif self.api_type == "native" and self._hyperliquid:
+                # Hyperliquid - check if symbol exists in available assets
+                is_valid = await self._hyperliquid.is_symbol_valid(symbol)
+                if not is_valid:
+                    return False, f"Symbol {symbol} not available on Hyperliquid"
+                return True, ""
+            else:
+                return False, "Unsupported API type"
+
+        except Exception as e:
+            logger.warning(f"Failed to check symbol tradeable status on {self.slug}", error=str(e))
+            return False, f"Error checking symbol: {str(e)}"
+
 
 async def get_exchange_credentials(
     db: AsyncSession, slug: str, encryption_key: str = "nexus_secret"
