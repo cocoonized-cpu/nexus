@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import * as TooltipPrimitive from '@radix-ui/react-tooltip';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, XCircle, Clock, Ban, Info } from 'lucide-react';
@@ -60,7 +60,7 @@ const STATUS_CONFIG = {
 
 /**
  * A table cell component that displays the bot action status for an opportunity.
- * Shows a badge with the status and a tooltip with detailed rule evaluations.
+ * Shows a badge with the status and a hover card with detailed rule evaluations.
  */
 export function BotActionCell({ botAction, className }: BotActionCellProps) {
   if (!botAction) {
@@ -77,8 +77,8 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
   const passedRules = botAction.details.filter(d => d.passed);
 
   return (
-    <TooltipPrimitive.Root delayDuration={0}>
-      <TooltipPrimitive.Trigger asChild>
+    <HoverCard openDelay={0} closeDelay={100}>
+      <HoverCardTrigger asChild>
         <Badge
           variant="outline"
           className={cn(
@@ -86,97 +86,92 @@ export function BotActionCell({ botAction, className }: BotActionCellProps) {
             config.color,
             className
           )}
+          data-testid="bot-action-badge"
         >
           <Icon className="h-3 w-3 mr-1" />
           {config.label}
         </Badge>
-      </TooltipPrimitive.Trigger>
-      <TooltipPrimitive.Portal>
-        <TooltipPrimitive.Content
-          side="left"
-          sideOffset={8}
-          className={cn(
-            'z-[9999] max-w-md p-0 rounded-lg border bg-popover text-popover-foreground shadow-xl',
-            'animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
-            'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2'
-          )}
-        >
-          <div className="p-4 space-y-3">
-            {/* Header */}
-            <div className="border-b border-border pb-3">
-              <div className={cn('font-semibold flex items-center gap-2 text-base', config.textColor)}>
-                <Icon className="h-5 w-5" />
-                {config.label}
-              </div>
-              <p className="text-sm text-muted-foreground mt-1.5">
-                {botAction.reason}
-              </p>
+      </HoverCardTrigger>
+      <HoverCardContent
+        side="left"
+        sideOffset={8}
+        className="w-[380px] max-w-md p-0 z-[9999]"
+        data-testid="bot-action-tooltip"
+      >
+        <div className="p-4 space-y-3">
+          {/* Header */}
+          <div className="border-b border-border pb-3">
+            <div className={cn('font-semibold flex items-center gap-2 text-base', config.textColor)}>
+              <Icon className="h-5 w-5" />
+              {config.label}
             </div>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              {botAction.reason}
+            </p>
+          </div>
 
-            {/* Failed Rules (if any) */}
-            {failedRules.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-red-500 uppercase tracking-wide">
-                  Blocking Rules
+          {/* Failed Rules (if any) */}
+          {failedRules.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-red-500 uppercase tracking-wide">
+                Blocking Rules
+              </div>
+              {failedRules.map((detail, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm bg-red-500/10 rounded-md p-2">
+                  <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-foreground font-medium">{detail.message}</span>
+                    {detail.current && detail.threshold && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Current: <span className="text-red-400">{detail.current}</span> | Required: <span className="text-green-400">{detail.threshold}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                {failedRules.map((detail, i) => (
-                  <div key={i} className="flex items-start gap-2 text-sm bg-red-500/10 rounded-md p-2">
-                    <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-foreground font-medium">{detail.message}</span>
-                      {detail.current && detail.threshold && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Current: <span className="text-red-400">{detail.current}</span> | Required: <span className="text-green-400">{detail.threshold}</span>
-                        </div>
-                      )}
-                    </div>
+              ))}
+            </div>
+          )}
+
+          {/* Passed Rules */}
+          {passedRules.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-green-500 uppercase tracking-wide">
+                Passed Checks
+              </div>
+              <div className="space-y-1">
+                {passedRules.slice(0, 5).map((detail, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
+                    <span className="text-muted-foreground">{detail.message}</span>
                   </div>
                 ))}
+                {passedRules.length > 5 && (
+                  <div className="text-xs text-muted-foreground pl-6">
+                    +{passedRules.length - 5} more checks passed
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Passed Rules */}
-            {passedRules.length > 0 && (
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-green-500 uppercase tracking-wide">
-                  Passed Checks
-                </div>
-                <div className="space-y-1">
-                  {passedRules.slice(0, 5).map((detail, i) => (
-                    <div key={i} className="flex items-start gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                      <span className="text-muted-foreground">{detail.message}</span>
-                    </div>
-                  ))}
-                  {passedRules.length > 5 && (
-                    <div className="text-xs text-muted-foreground pl-6">
-                      +{passedRules.length - 5} more checks passed
-                    </div>
-                  )}
-                </div>
+          {/* User Action */}
+          {botAction.user_action && (
+            <div className="border-t border-border pt-3">
+              <div className="flex items-start gap-2 text-sm bg-blue-500/10 rounded-md p-2">
+                <span className="text-blue-400 font-bold">→</span>
+                <span className="text-blue-400 font-medium">{botAction.user_action}</span>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* User Action */}
-            {botAction.user_action && (
-              <div className="border-t border-border pt-3">
-                <div className="flex items-start gap-2 text-sm bg-blue-500/10 rounded-md p-2">
-                  <span className="text-blue-400 font-bold">→</span>
-                  <span className="text-blue-400 font-medium">{botAction.user_action}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Can Execute Note */}
-            {!botAction.can_execute && (
-              <div className="text-xs text-red-400 border-t border-border pt-3 font-medium">
-                Manual execution is not available for this opportunity
-              </div>
-            )}
-          </div>
-          <TooltipPrimitive.Arrow className="fill-popover" />
-        </TooltipPrimitive.Content>
-      </TooltipPrimitive.Portal>
-    </TooltipPrimitive.Root>
+          {/* Can Execute Note */}
+          {!botAction.can_execute && (
+            <div className="text-xs text-red-400 border-t border-border pt-3 font-medium">
+              Manual execution is not available for this opportunity
+            </div>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
