@@ -146,6 +146,17 @@ class OpportunityDetector:
         # Load blacklisted symbols
         await self._load_blacklisted_symbols()
 
+        # Initialize bot action calculator
+        self._bot_action_calculator = BotActionCalculator(
+            state_manager=self.state_manager,
+            config=self._config,
+            exchanges_with_credentials=self._exchanges_with_credentials,
+            blacklisted_symbols=self._blacklisted_symbols,
+        )
+
+        # Load initial allocation context
+        await self._refresh_allocation_context()
+
         # Recover unexpired opportunities from database
         await self._recover_opportunities()
 
