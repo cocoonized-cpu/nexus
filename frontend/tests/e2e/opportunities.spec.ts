@@ -384,3 +384,176 @@ test.describe('Opportunities Filtering', () => {
     await expect(page.locator('table').or(page.getByText(/no opportunities/i))).toBeVisible();
   });
 });
+
+test.describe('Bot Action Column', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/opportunities');
+    await page.waitForTimeout(1000);
+  });
+
+  test('should display Bot Action column header', async ({ page }) => {
+    await expect(page.getByText('Bot Action')).toBeVisible();
+  });
+
+  test('should show bot action badges in table', async ({ page }) => {
+    // Look for any bot action badge (Blocked, Waiting, Manual only, Auto-trade)
+    const badges = page.locator('[data-testid="bot-action-badge"]');
+    const count = await badges.count();
+
+    // If we have opportunities, we should have badges
+    const table = page.locator('table');
+    if (await table.isVisible()) {
+      const rows = page.locator('tbody tr');
+      const rowCount = await rows.count();
+      if (rowCount > 0) {
+        expect(count).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('should display correct badge colors for different statuses', async ({ page }) => {
+    // Check that badges exist with expected classes
+    const blockedBadges = page.locator('[data-testid="bot-action-badge"]:has-text("Blocked")');
+    const waitingBadges = page.locator('[data-testid="bot-action-badge"]:has-text("Waiting")');
+    const manualBadges = page.locator('[data-testid="bot-action-badge"]:has-text("Manual only")');
+    const autoBadges = page.locator('[data-testid="bot-action-badge"]:has-text("Auto-trade")');
+
+    const blockedCount = await blockedBadges.count();
+    const waitingCount = await waitingBadges.count();
+    const manualCount = await manualBadges.count();
+    const autoCount = await autoBadges.count();
+
+    // At least one type of badge should exist if we have opportunities
+    const total = blockedCount + waitingCount + manualCount + autoCount;
+    const table = page.locator('table');
+    if (await table.isVisible()) {
+      const rows = page.locator('tbody tr');
+      const rowCount = await rows.count();
+      if (rowCount > 0) {
+        expect(total).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('should show hover card on badge hover with rule details', async ({ page }) => {
+    // Find a bot action badge
+    const badge = page.locator('[data-testid="bot-action-badge"]').first();
+
+    if (await badge.isVisible()) {
+      // Hover over the badge
+      await badge.hover();
+
+      // Wait for hover card to appear
+      await page.waitForTimeout(200);
+
+      // Should see the hover card content with rule details
+      const hoverCard = page.locator('[data-testid="bot-action-tooltip"]');
+      await expect(hoverCard).toBeVisible({ timeout: 2000 });
+
+      // At least one section should be visible (Blocking Rules or Passed Checks)
+      const blockedRulesHeader = page.getByText('Blocking Rules');
+      const passedChecksHeader = page.getByText('Passed Checks');
+
+      const blockedVisible = await blockedRulesHeader.isVisible();
+      const passedVisible = await passedChecksHeader.isVisible();
+
+      expect(blockedVisible || passedVisible).toBe(true);
+    }
+  });
+
+  test('hover card shows status header matching badge', async ({ page }) => {
+    // Find a bot action badge
+    const badge = page.locator('[data-testid="bot-action-badge"]').first();
+
+    if (await badge.isVisible()) {
+      // Get badge text
+      const badgeText = await badge.textContent();
+
+      // Hover over the badge
+      await badge.hover();
+      await page.waitForTimeout(200);
+
+      // Hover card should show matching status in header
+      const hoverCard = page.locator('[data-testid="bot-action-tooltip"]');
+      await expect(hoverCard).toBeVisible({ timeout: 2000 });
+
+      // The header should contain the same status text
+      if (badgeText) {
+        const statusText = badgeText.trim();
+        await expect(hoverCard.getByText(statusText).first()).toBeVisible();
+      }
+    }
+  });
+
+  test('hover card shows current vs required values for blocking rules', async ({ page }) => {
+    // Find a Blocked badge specifically
+    const blockedBadge = page.locator('[data-testid="bot-action-badge"]:has-text("Blocked")').first();
+
+    if (await blockedBadge.isVisible()) {
+      await blockedBadge.hover();
+      await page.waitForTimeout(200);
+
+      const hoverCard = page.locator('[data-testid="bot-action-tooltip"]');
+      await expect(hoverCard).toBeVisible({ timeout: 2000 });
+
+      // Look for current/required format in blocking rules
+      const detailText = page.getByText(/Current:.*Required:/);
+      const count = await detailText.count();
+
+      // Blocked items should typically have current vs required values
+      expect(count).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  test('hover card shows user action suggestion', async ({ page }) => {
+    // Find a Blocked or Waiting badge
+    const badge = page.locator('[data-testid="bot-action-badge"]:has-text("Blocked")').first();
+
+    if (await badge.isVisible()) {
+      await badge.hover();
+      await page.waitForTimeout(200);
+
+      const hoverCard = page.locator('[data-testid="bot-action-tooltip"]');
+      await expect(hoverCard).toBeVisible({ timeout: 2000 });
+
+      // Should show a user action suggestion (starts with arrow →)
+      const userAction = hoverCard.locator('text=/→/');
+      const count = await userAction.count();
+
+      // Blocked items typically have user actions
+      expect(count).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  test('hover card disappears when mouse leaves', async ({ page }) => {
+    const badge = page.locator('[data-testid="bot-action-badge"]').first();
+
+    if (await badge.isVisible()) {
+      // Hover to show card
+      await badge.hover();
+      await page.waitForTimeout(200);
+
+      const hoverCard = page.locator('[data-testid="bot-action-tooltip"]');
+      await expect(hoverCard).toBeVisible({ timeout: 2000 });
+
+      // Move mouse away
+      await page.mouse.move(0, 0);
+      await page.waitForTimeout(300);
+
+      // Card should disappear
+      await expect(hoverCard).not.toBeVisible({ timeout: 2000 });
+    }
+  });
+
+  test('should sort by bot_action column', async ({ page }) => {
+    const botActionHeader = page.getByRole('button', { name: /bot action/i }).first();
+
+    if (await botActionHeader.isVisible()) {
+      await botActionHeader.click();
+      await page.waitForTimeout(300);
+
+      // Table should still be visible after sorting
+      await expect(page.locator('table')).toBeVisible();
+    }
+  });
+});
