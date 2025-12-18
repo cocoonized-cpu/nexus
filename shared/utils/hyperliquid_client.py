@@ -116,7 +116,45 @@ class HyperliquidClient:
             json=payload,
             headers={"Content-Type": "application/json"},
         ) as response:
-            return await response.json()
+            # Handle both JSON and text responses
+            content_type = response.headers.get("Content-Type", "")
+
+            if response.status >= 400:
+                # Try to get error text
+                try:
+                    if "application/json" in content_type:
+                        error_data = await response.json()
+                        error_msg = error_data.get("error", str(error_data))
+                    else:
+                        error_msg = await response.text()
+                except Exception:
+                    error_msg = f"HTTP {response.status}"
+
+                logger.error(
+                    "Hyperliquid API error",
+                    status=response.status,
+                    error=error_msg,
+                    action_type=action.get("type"),
+                )
+                return {"status": "error", "error": error_msg, "http_status": response.status}
+
+            # Parse successful response
+            if "application/json" in content_type:
+                return await response.json()
+            else:
+                # Handle text responses (shouldn't happen for successful requests)
+                text = await response.text()
+                logger.warning(
+                    "Unexpected text response from Hyperliquid",
+                    content_type=content_type,
+                    text=text[:200],
+                )
+                # Try to parse as JSON anyway
+                try:
+                    import json as json_lib
+                    return json_lib.loads(text)
+                except Exception:
+                    return {"status": "error", "error": f"Unexpected response format: {text[:100]}"}
 
     def _sign_action(self, action: dict, nonce: int) -> dict:
         """Sign an action using EIP-712."""
