@@ -16,19 +16,30 @@ async def list_opportunities(
     min_score: int = Query(0, ge=0, le=100, description="Minimum UOS score"),
     symbol: Optional[str] = Query(None, description="Filter by symbol"),
     limit: int = Query(50, ge=1, le=200, description="Number of results"),
+    include_bot_action: bool = Query(True, description="Include bot action status"),
 ) -> dict[str, Any]:
-    """Get list of current opportunities."""
+    """Get list of current opportunities with bot action status."""
     detector = request.app.state.detector
 
-    opportunities = detector.get_opportunities(
-        min_score=min_score,
-        symbol=symbol,
-        limit=limit,
-    )
+    if include_bot_action:
+        # Use the new method that includes bot_action
+        opportunities = detector.get_opportunities_with_bot_action(
+            min_score=min_score,
+            symbol=symbol,
+            limit=limit,
+        )
+    else:
+        # Legacy method without bot_action
+        opps = detector.get_opportunities(
+            min_score=min_score,
+            symbol=symbol,
+            limit=limit,
+        )
+        opportunities = [opp.model_dump() for opp in opps]
 
     return {
         "success": True,
-        "data": [opp.model_dump() for opp in opportunities],
+        "data": opportunities,
         "meta": {
             "count": len(opportunities),
             "min_score_filter": min_score,
